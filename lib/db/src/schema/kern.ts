@@ -1,4 +1,4 @@
-import { pgTable, text, integer, serial, boolean, real, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, serial, boolean, real, timestamp, pgEnum, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -64,6 +64,20 @@ export const gitCommitsTable = pgTable("git_commits", {
   project: text("project").notNull().default(""),
   committedAt: timestamp("committed_at").defaultNow().notNull(),
 });
+
+export const integrationsTable = pgTable(
+  "integrations",
+  {
+    id: serial("id").primaryKey(),
+    developerId: integer("developer_id").notNull().references(() => developersTable.id),
+    type: text("type").notNull(),
+    config: text("config").notNull().default("{}"),
+    connectedAt: timestamp("connected_at").defaultNow().notNull(),
+  },
+  t => [unique("integrations_dev_type_unique").on(t.developerId, t.type)],
+);
+
+export type Integration = typeof integrationsTable.$inferSelect;
 
 export const insertTeamSchema = createInsertSchema(teamsTable).omit({ id: true, createdAt: true });
 export const insertDeveloperSchema = createInsertSchema(developersTable).omit({ id: true, createdAt: true });

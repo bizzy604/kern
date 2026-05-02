@@ -1,17 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Github, Slack, Terminal, Shield, Bell, Key, Copy, Eye, EyeOff, ExternalLink } from "lucide-react";
+import {
+  Check, X, Github, Slack, Terminal, Shield, Bell, Key,
+  Copy, Eye, EyeOff, ExternalLink, Loader2, Unplug, Plug,
+} from "lucide-react";
 import { SiJira, SiAsana } from "react-icons/si";
+
+/* ─── helpers ─────────────────────────────────────────────────── */
 
 function InfoRow({ label, value, mono = false }: { label: string; value?: string | null; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between py-3 border-b border-border last:border-0">
       <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">{label}</span>
       <span className={`text-sm text-foreground ${mono ? "font-mono" : ""}`}>
-        {value || <span className="text-muted-foreground">—</span>}
+        {value ?? <span className="text-muted-foreground">—</span>}
       </span>
     </div>
   );
@@ -31,6 +37,8 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
+/* ─── API key card ─────────────────────────────────────────────── */
+
 function ApiKeyCard() {
   const { toast } = useToast();
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -39,151 +47,284 @@ function ApiKeyCard() {
 
   useEffect(() => {
     const stored = sessionStorage.getItem("kern_api_key");
-    if (stored) {
-      setApiKey(stored);
-      setLoading(false);
-      return;
-    }
-    // The /developers/me/apikey endpoint requires the key itself — for the dashboard
-    // we fetch it from the /developers/me endpoint which has it embedded in the DB.
-    // Use a dedicated unauthenticated endpoint that returns the key for the local dashboard.
+    if (stored) { setApiKey(stored); setLoading(false); return; }
     fetch("/api/developers/me/apikey-local")
       .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d?.apiKey) {
-          setApiKey(d.apiKey);
-          sessionStorage.setItem("kern_api_key", d.apiKey);
-        }
-      })
+      .then(d => { if (d?.apiKey) { setApiKey(d.apiKey); sessionStorage.setItem("kern_api_key", d.apiKey); } })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  const handleCopy = () => {
-    if (!apiKey) return;
-    navigator.clipboard.writeText(apiKey);
-    toast({ title: "Copied", description: "API key copied to clipboard." });
-  };
-
   const masked = apiKey ? `${apiKey.slice(0, 8)}${"•".repeat(24)}${apiKey.slice(-8)}` : null;
 
   return (
-    <div className="rounded-lg border border-border bg-card p-6 space-y-5" data-testid="card-api-key">
+    <div className="rounded-lg border border-border bg-card p-6 space-y-4">
       <div className="flex items-center gap-3">
         <Key className="h-4 w-4 text-accent" />
         <h2 className="text-sm font-semibold text-foreground">CLI API Key</h2>
       </div>
       <p className="text-xs text-muted-foreground">
-        This key authenticates the <code className="font-mono bg-muted/40 px-1 rounded">kern</code> agent when it syncs sessions to your dashboard. Treat it like a password.
+        Authenticates the <code className="font-mono bg-muted/40 px-1 rounded">kern</code> agent when syncing sessions. Treat it like a password.
       </p>
-
-      {loading ? (
-        <Skeleton className="h-9 w-full" />
-      ) : apiKey ? (
+      {loading ? <Skeleton className="h-9 w-full" /> : apiKey ? (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <code className="flex-1 text-xs font-mono bg-muted/30 border border-border rounded px-3 py-2 text-foreground overflow-hidden text-ellipsis whitespace-nowrap" data-testid="api-key-value">
+            <code className="flex-1 text-xs font-mono bg-muted/30 border border-border rounded px-3 py-2 text-foreground overflow-hidden text-ellipsis whitespace-nowrap">
               {revealed ? apiKey : masked}
             </code>
-            <Button variant="ghost" size="sm" className="h-9 w-9 p-0 flex-shrink-0" onClick={() => setRevealed(v => !v)} data-testid="button-reveal-key">
+            <Button variant="ghost" size="sm" className="h-9 w-9 p-0 flex-shrink-0" onClick={() => setRevealed(v => !v)}>
               {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
-            <Button variant="ghost" size="sm" className="h-9 w-9 p-0 flex-shrink-0" onClick={handleCopy} data-testid="button-copy-key">
+            <Button variant="ghost" size="sm" className="h-9 w-9 p-0 flex-shrink-0"
+              onClick={() => { navigator.clipboard.writeText(apiKey); toast({ title: "Copied", description: "API key copied to clipboard." }); }}>
               <Copy className="h-4 w-4" />
             </Button>
           </div>
-          <div className="rounded-md bg-muted/20 border border-border p-3 space-y-1">
+          <div className="rounded-md bg-muted/20 border border-border p-3">
             <p className="text-xs text-muted-foreground font-mono mb-2">Add to <code className="bg-muted/40 px-1 rounded">~/.kern/config.json</code>:</p>
-            <pre className="text-xs font-mono text-foreground whitespace-pre-wrap select-all">{`{
-  "api_endpoint": "${window.location.origin}/api",
-  "api_key": "${revealed ? apiKey : masked}"
-}`}</pre>
+            <pre className="text-xs font-mono text-foreground whitespace-pre-wrap select-all">{`{\n  "api_endpoint": "${window.location.origin}/api",\n  "api_key": "${revealed ? apiKey : masked}"\n}`}</pre>
           </div>
         </div>
-      ) : (
-        <p className="text-xs text-muted-foreground italic">API key not available</p>
+      ) : <p className="text-xs text-muted-foreground italic">API key not available</p>}
+    </div>
+  );
+}
+
+/* ─── Integration types ────────────────────────────────────────── */
+
+interface IntegrationStatus {
+  type: string;
+  connected: boolean;
+  config: Record<string, string>;
+  connectedAt: string | null;
+}
+
+function useIntegrations() {
+  const [integrations, setIntegrations] = useState<IntegrationStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(() => {
+    setLoading(true);
+    fetch("/api/integrations")
+      .then(r => r.ok ? r.json() : { integrations: [] })
+      .then(d => setIntegrations(d.integrations ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { integrations, loading, refetch };
+}
+
+/* ─── Slack card ───────────────────────────────────────────────── */
+
+function SlackCard({ status, onRefetch }: { status: IntegrationStatus | undefined; onRefetch: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [channelName, setChannelName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const connected = status?.connected ?? false;
+  const channel = status?.config?.channelName || null;
+
+  const handleConnect = async () => {
+    if (!webhookUrl.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/integrations/slack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webhookUrl: webhookUrl.trim(), channelName: channelName.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: "Connection failed", description: data.error ?? "Could not connect Slack.", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Slack connected", description: "A test message was sent to your channel." });
+      setOpen(false);
+      setWebhookUrl("");
+      setChannelName("");
+      onRefetch();
+    } catch {
+      toast({ title: "Network error", description: "Could not reach the server.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true);
+    try {
+      await fetch("/api/integrations/slack", { method: "DELETE" });
+      toast({ title: "Slack disconnected" });
+      onRefetch();
+    } catch {
+      toast({ title: "Error", description: "Could not disconnect.", variant: "destructive" });
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card transition-colors" data-testid="integration-card-slack">
+      <div className="flex items-start justify-between p-4">
+        <div className="flex items-start gap-4">
+          <div className="h-10 w-10 rounded-md border border-border bg-muted/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Slack className="h-5 w-5" style={{ color: "#4A154B" }} />
+          </div>
+          <div>
+            <div className="text-sm font-medium text-foreground">Slack</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Post standups to your team channel automatically</div>
+            {connected && channel && (
+              <div className="text-xs text-accent mt-1 font-mono">{channel.startsWith("#") ? channel : `#${channel}`}</div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+          {connected ? (
+            <>
+              <span className="inline-flex items-center gap-1 text-xs font-mono text-green-400">
+                <Check className="h-3 w-3" /> Connected
+              </span>
+              <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-destructive border border-border hover:border-destructive/40"
+                onClick={handleDisconnect} disabled={disconnecting}>
+                {disconnecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Unplug className="h-3 w-3 mr-1" />Disconnect</>}
+              </Button>
+            </>
+          ) : (
+            <>
+              <span className="inline-flex items-center gap-1 text-xs font-mono text-muted-foreground">
+                <X className="h-3 w-3" /> Not connected
+              </span>
+              <Button size="sm" className="h-7 text-xs bg-accent hover:bg-accent/90 text-background font-mono"
+                onClick={() => setOpen(v => !v)}>
+                <Plug className="h-3 w-3 mr-1" /> Connect
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Inline connect form */}
+      {open && !connected && (
+        <div className="border-t border-border px-4 pb-4 pt-3 space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Incoming Webhook URL</label>
+            <Input
+              placeholder="https://hooks.slack.com/services/T.../B.../..."
+              value={webhookUrl}
+              onChange={e => setWebhookUrl(e.target.value)}
+              className="text-xs font-mono h-8 bg-background border-border"
+              data-testid="input-slack-webhook"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Channel name (optional)</label>
+            <Input
+              placeholder="#dev-standup"
+              value={channelName}
+              onChange={e => setChannelName(e.target.value)}
+              className="text-xs font-mono h-8 bg-background border-border"
+              data-testid="input-slack-channel"
+            />
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <Button size="sm" className="h-7 text-xs bg-accent hover:bg-accent/90 text-background"
+              onClick={handleConnect} disabled={saving || !webhookUrl.trim()}
+              data-testid="button-save-slack">
+              {saving ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Testing…</> : <><Check className="h-3 w-3 mr-1" />Save & Test</>}
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noopener noreferrer"
+              className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
+              <ExternalLink className="h-3 w-3" /> How to create a webhook
+            </a>
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-interface Integration {
+/* ─── Generic integration card ─────────────────────────────────── */
+
+interface GenericIntegration {
+  type: string;
   name: string;
   description: string;
-  connected: boolean;
   icon: React.ElementType;
   iconColor?: string;
-  configNote?: string;
+  comingSoon?: boolean;
 }
 
-const integrations: Integration[] = [
-  {
-    name: "Slack",
-    description: "Post standups to your team channel automatically",
-    connected: false,
-    icon: Slack,
-    iconColor: "#4A154B",
-    configNote: "Set SLACK_WEBHOOK_URL environment variable to enable",
-  },
-  { name: "Jira", description: "Sync work sessions with Jira issues and sprints", connected: false, icon: SiJira, iconColor: "#0052CC" },
-  { name: "Asana", description: "Link sessions to Asana tasks and projects", connected: false, icon: SiAsana, iconColor: "#F95C5C" },
-  { name: "GitHub", description: "Correlate sessions with commits and pull requests", connected: true, icon: Github },
+const GENERIC_INTEGRATIONS: GenericIntegration[] = [
+  { type: "github", name: "GitHub", description: "Git commits captured via kern CLI agent — real-time correlation", icon: Github, comingSoon: false },
+  { type: "jira", name: "Jira", description: "Sync work sessions with Jira issues and sprints", icon: SiJira, iconColor: "#0052CC", comingSoon: true },
+  { type: "asana", name: "Asana", description: "Link sessions to Asana tasks and projects", icon: SiAsana, iconColor: "#F95C5C", comingSoon: true },
 ];
 
-function IntegrationCard({ integration }: { integration: Integration }) {
-  const Icon = integration.icon;
+function GenericIntegrationCard({ meta, status }: { meta: GenericIntegration; status: IntegrationStatus | undefined }) {
+  const Icon = meta.icon;
+  const connected = status?.connected ?? false;
+
   return (
-    <div className="flex items-start justify-between p-4 rounded-lg border border-border bg-card hover:border-border/80 transition-colors" data-testid={`integration-card-${integration.name.toLowerCase()}`}>
+    <div className="flex items-start justify-between p-4 rounded-lg border border-border bg-card hover:border-border/80 transition-colors"
+      data-testid={`integration-card-${meta.name.toLowerCase()}`}>
       <div className="flex items-start gap-4">
         <div className="h-10 w-10 rounded-md border border-border bg-muted/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-          <Icon className="h-5 w-5" style={{ color: integration.iconColor || "currentColor" }} />
+          <Icon className="h-5 w-5" style={{ color: meta.iconColor || "currentColor" }} />
         </div>
         <div>
-          <div className="text-sm font-medium text-foreground">{integration.name}</div>
-          <div className="text-xs text-muted-foreground mt-0.5">{integration.description}</div>
-          {integration.configNote && !integration.connected && (
-            <div className="text-xs text-amber-400/80 mt-1.5 flex items-center gap-1">
-              <ExternalLink className="h-3 w-3" />
-              {integration.configNote}
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-medium text-foreground">{meta.name}</div>
+            {meta.comingSoon && (
+              <span className="text-xs font-mono px-1.5 py-0.5 rounded border border-border text-muted-foreground">soon</span>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">{meta.description}</div>
+          {connected && status?.connectedAt && (
+            <div className="text-xs text-muted-foreground mt-1">
+              Since {new Date(status.connectedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
             </div>
           )}
         </div>
       </div>
       <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-        {integration.connected ? (
-          <>
-            <span className="inline-flex items-center gap-1 text-xs font-mono text-green-400">
-              <Check className="h-3 w-3" /> Connected
-            </span>
-            <button className="text-xs text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded border border-border hover:border-destructive/30">
-              Disconnect
-            </button>
-          </>
+        {connected ? (
+          <span className="inline-flex items-center gap-1 text-xs font-mono text-green-400">
+            <Check className="h-3 w-3" /> Connected
+          </span>
+        ) : meta.comingSoon ? (
+          <span className="text-xs font-mono text-muted-foreground px-2 py-1 rounded border border-border">Coming soon</span>
         ) : (
-          <>
-            <span className="inline-flex items-center gap-1 text-xs font-mono text-muted-foreground">
-              <X className="h-3 w-3" /> Not connected
-            </span>
-            <button className="text-xs text-accent hover:text-accent/80 transition-colors px-2 py-1 rounded border border-accent/30 hover:border-accent/60 font-mono">
-              Connect
-            </button>
-          </>
+          <span className="inline-flex items-center gap-1 text-xs font-mono text-muted-foreground">
+            <X className="h-3 w-3" /> Not connected
+          </span>
         )}
       </div>
     </div>
   );
 }
 
+/* ─── Main page ────────────────────────────────────────────────── */
+
 export default function Settings() {
-  const { data: me, isLoading } = useGetMe({
-    query: { queryKey: getGetMeQueryKey() },
-  });
+  const { data: me, isLoading } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  const { integrations, loading: intLoading, refetch } = useIntegrations();
+
+  const getStatus = (type: string) => integrations.find(i => i.type === type);
 
   return (
     <div className="space-y-8 max-w-2xl" data-testid="page-settings">
       <div>
         <h1 className="text-2xl font-bold font-mono text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-1">Your profile, API key, and integration configuration</p>
+        <p className="text-sm text-muted-foreground mt-1">Profile, API key, and integrations</p>
       </div>
 
       {/* Profile */}
@@ -193,9 +334,7 @@ export default function Settings() {
           <h2 className="text-sm font-semibold text-foreground">Profile</h2>
         </div>
         {isLoading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
-          </div>
+          <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
         ) : me ? (
           <div>
             <InfoRow label="Name" value={me.name} />
@@ -220,12 +359,22 @@ export default function Settings() {
           <Shield className="h-4 w-4 text-accent" />
           <h2 className="text-sm font-semibold text-foreground">Integrations</h2>
         </div>
-        <p className="text-xs text-muted-foreground">Connect external tools to automatically sync your work sessions and post standups.</p>
-        <div className="space-y-2">
-          {integrations.map(integration => (
-            <IntegrationCard key={integration.name} integration={integration} />
-          ))}
-        </div>
+        <p className="text-xs text-muted-foreground">
+          Connect external tools to automatically sync work sessions and post standups.
+        </p>
+
+        {intLoading ? (
+          <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[72px] rounded-lg" />)}</div>
+        ) : (
+          <div className="space-y-2">
+            {/* Slack — full connect flow */}
+            <SlackCard status={getStatus("slack")} onRefetch={refetch} />
+            {/* GitHub, Jira, Asana */}
+            {GENERIC_INTEGRATIONS.map(meta => (
+              <GenericIntegrationCard key={meta.type} meta={meta} status={getStatus(meta.type)} />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Notifications */}
@@ -245,9 +394,7 @@ export default function Settings() {
                 <div className="text-sm text-foreground">{item.label}</div>
                 <div className="text-xs text-muted-foreground mt-0.5">{item.desc}</div>
               </div>
-              <div className="relative flex-shrink-0">
-                <div className="h-5 w-9 rounded-full bg-accent/20 border border-accent/30 cursor-pointer hover:bg-accent/30 transition-colors" />
-              </div>
+              <div className="h-5 w-9 rounded-full bg-accent/20 border border-accent/30 cursor-pointer hover:bg-accent/30 transition-colors flex-shrink-0" />
             </div>
           ))}
         </div>
@@ -261,14 +408,12 @@ export default function Settings() {
         </div>
         <div className="space-y-1">
           {[
-            { label: "Shell integration", value: "Active — zsh + fish" },
+            { label: "Shell integration", value: "zsh + fish" },
             { label: "Sync frequency", value: "Every 5 minutes" },
             { label: "Local buffer", value: "30-day SQLite cache" },
             { label: "Auth", value: "Bearer token (API key above)" },
             { label: "Encryption", value: "TLS 1.3 in transit" },
-          ].map(item => (
-            <InfoRow key={item.label} label={item.label} value={item.value} mono />
-          ))}
+          ].map(item => <InfoRow key={item.label} label={item.label} value={item.value} mono />)}
         </div>
       </div>
     </div>

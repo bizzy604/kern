@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { standupsTable, developersTable } from "@workspace/db";
+import { standupsTable, developersTable, integrationsTable } from "@workspace/db";
 import { eq, and, desc, asc } from "drizzle-orm";
 import {
   ListStandupsQueryParams,
@@ -129,7 +129,19 @@ router.post("/standups/:id/post", async (req, res) => {
 
     if (!standup[0]) return res.status(404).json({ error: "Standup not found" });
 
-    const webhookUrl = process.env["SLACK_WEBHOOK_URL"];
+    // Look up Slack webhook from DB (env var as fallback)
+    const slackIntegration = await db
+      .select()
+      .from(integrationsTable)
+      .where(and(eq(integrationsTable.developerId, standup[0].developerId), eq(integrationsTable.type, "slack")))
+      .limit(1);
+
+    let webhookUrl: string | null = null;
+    if (slackIntegration[0]?.config) {
+      try { webhookUrl = JSON.parse(slackIntegration[0].config).webhookUrl ?? null; } catch { /* ignore */ }
+    }
+    if (!webhookUrl) webhookUrl = process.env["SLACK_WEBHOOK_URL"] ?? null;
+
     if (webhookUrl) {
       const slackRes = await fetch(webhookUrl, {
         method: "POST",
@@ -142,10 +154,10 @@ router.post("/standups/:id/post", async (req, res) => {
       });
       if (!slackRes.ok) {
         req.log.error({ status: slackRes.status }, "Slack webhook returned non-OK status");
-        return res.status(502).json({ error: "Slack webhook failed" });
+        return res.status(502).json({ error: "Slack webhook failed — check your webhook URL in Settings" });
       }
     } else {
-      req.log.warn("SLACK_WEBHOOK_URL not set — marking posted without sending to Slack");
+      req.log.warn("No Slack webhook configured — marking posted without sending");
     }
 
     await db
@@ -155,7 +167,7 @@ router.post("/standups/:id/post", async (req, res) => {
 
     return res.json({
       success: true,
-      message: webhookUrl ? "Standup posted to Slack successfully" : "Marked as posted (no webhook configured)",
+      message: webhookUrl ? "Standup posted to Slack successfully" : "Marked as posted (configure Slack in Settings to send for real)",
     });
   } catch (err) {
     req.log.error({ err }, "Failed to post standup to Slack");
