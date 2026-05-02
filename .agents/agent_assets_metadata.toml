@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "o1C7fYtlz-vgLGRALj2q2"
+uri = "file://README.md"
+type = "text"
+title = "KERN — Production README"
