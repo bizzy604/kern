@@ -19,6 +19,49 @@ No manual time-tracking. No ticket updates. No standups that take 20 minutes to 
 
 ---
 
+## Terminal commands — quick reference
+
+Everything you can do from your shell:
+
+```bash
+# ── Setup ────────────────────────────────────────────────────────────────────
+kern init                                        # Inject shell hooks + open dashboard
+kern config --endpoint <url> --key <key>         # Set API endpoint and API key
+kern config --dev-id <id>                        # Set your developer ID
+kern config                                      # Print current config
+
+# ── Open dashboard ───────────────────────────────────────────────────────────
+kern dashboard                                   # Open KERN dashboard in your browser
+
+# ── Sync & daemon ────────────────────────────────────────────────────────────
+kern sync                                        # Flush local buffer to API now
+kern daemon                                      # Background sync loop (every 5 min)
+
+# ── Inspect ──────────────────────────────────────────────────────────────────
+kern status                                      # Buffer stats, last sync, recent events
+
+# ── Record (called automatically by shell hooks) ─────────────────────────────
+kern record --cmd <cmd> --start <ns> --exit <n> --cwd <path>
+```
+
+### Config flags
+
+| Flag | Description | Example |
+|---|---|---|
+| `--endpoint <url>` | KERN API base URL | `https://kern.example.com/api` |
+| `--key <api_key>` | API key (from Settings → CLI API Key) | `kern_abc123` |
+| `--dev-id <id>` | Developer ID | `1` |
+
+### Shell flags for `kern init`
+
+| Flag | Description |
+|---|---|
+| `--shell zsh` | Force zsh hook (default: auto-detect) |
+| `--shell bash` | Force bash hook |
+| `--shell fish` | Force fish hook |
+
+---
+
 ## Features
 
 ### Dashboard
@@ -57,7 +100,7 @@ No manual time-tracking. No ticket updates. No standups that take 20 minutes to 
 ```
 kern/
 ├── kern-agent/          # Go CLI agent (ships as npm package @kern/agent)
-│   ├── cmd/             # Commands: init, record, sync, daemon, status, config
+│   ├── cmd/             # Commands: init, record, sync, daemon, status, config, dashboard
 │   └── internal/
 │       ├── classifier/  # Rule-based shell command → activity type classification
 │       ├── client/      # HTTP client for API sync (gzip JSON)
@@ -113,25 +156,25 @@ npm install -g @kern/agent
 kern init
 ```
 
-This injects a hook into your `~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`. After restarting your shell, every command you run is silently captured.
+Detects your shell (zsh, bash, or fish), injects the capture hook into the appropriate config file, and opens the dashboard automatically. After restarting your shell, every command you run is silently captured.
 
-### 3. Configure the API endpoint
+### 3. Configure the API endpoint and key
 
 ```bash
-kern config set api_endpoint https://your-kern-instance.replit.app/api
-kern config set api_key YOUR_API_KEY
+kern config --endpoint https://your-kern-instance.replit.app/api --key YOUR_API_KEY
 ```
+
+Your API key is shown in the dashboard under **Settings → CLI API Key**.
 
 Or edit `~/.kern/config.json` directly:
 
 ```json
 {
   "api_endpoint": "https://your-kern-instance.replit.app/api",
-  "api_key": "your-api-key-here"
+  "api_key": "your-api-key-here",
+  "developer_id": 1
 }
 ```
-
-Your API key is shown in the dashboard under **Settings → CLI API Key**.
 
 ### 4. Start the daemon
 
@@ -139,7 +182,13 @@ Your API key is shown in the dashboard under **Settings → CLI API Key**.
 kern daemon
 ```
 
-This runs a background process that syncs your local buffer to the API every 5 minutes. Alternatively, call `kern sync` manually whenever you want to flush.
+Syncs your local buffer to the API every 5 minutes in the background. Or call `kern sync` manually to flush immediately.
+
+### 5. Open your dashboard
+
+```bash
+kern dashboard
+```
 
 ---
 
@@ -147,13 +196,31 @@ This runs a background process that syncs your local buffer to the API every 5 m
 
 | Command | Description |
 |---|---|
-| `kern init` | Inject shell hooks (zsh / bash / fish) |
-| `kern record <cmd>` | Capture a single command (called automatically by shell hook) |
+| `kern init` | Detect shell, inject hooks, open dashboard in browser |
+| `kern dashboard` | Open the KERN dashboard in your browser |
+| `kern config` | Print current configuration |
+| `kern config --endpoint <url> --key <key>` | Set API endpoint and API key |
+| `kern config --dev-id <id>` | Set developer ID |
 | `kern sync` | Flush local SQLite buffer to the KERN API |
 | `kern daemon` | Run background sync loop (every 5 minutes) |
 | `kern status` | Show local buffer stats, last sync time, and recent events |
-| `kern config` | Print current config |
-| `kern config set <key> <value>` | Set a config value |
+| `kern record --cmd <cmd> --start <ns> --exit <n> --cwd <path>` | Capture one command (called automatically by shell hooks) |
+
+### `kern init` flags
+
+| Flag | Description |
+|---|---|
+| `--shell zsh` | Force zsh hook |
+| `--shell bash` | Force bash hook |
+| `--shell fish` | Force fish hook |
+
+### `kern config` flags
+
+| Flag | Description |
+|---|---|
+| `--endpoint <url>` | Set API base URL |
+| `--key <api_key>` | Set API key |
+| `--dev-id <id>` | Set developer ID |
 
 ---
 
@@ -276,7 +343,7 @@ Automatically detected when the kern agent captures git commits. No OAuth requir
 ### Clone and install
 
 ```bash
-git clone https://github.com/kern-dev/kern
+git clone https://github.com/bizzy604/kern
 cd kern
 pnpm install
 ```
@@ -304,6 +371,15 @@ pnpm --filter @workspace/kern-dashboard run dev
 
 # Build the kern CLI agent
 cd kern-agent && go build -o bin/kern .
+
+# Typecheck everything
+pnpm run typecheck
+
+# Typecheck shared libs only
+pnpm run typecheck:libs
+
+# Regenerate API client (after changing OpenAPI spec)
+pnpm --filter @workspace/api-spec run codegen
 ```
 
 ### Typecheck
