@@ -1,0 +1,28 @@
+{
+  "name": "@kern/agent",
+  "version": "1.0.0",
+  "description": "KERN terminal agent — captures shell commands and syncs them to your KERN dashboard",
+  "keywords": ["kern", "developer", "productivity", "terminal", "shell", "agent"],
+  "homepage": "https://kern.dev",
+  "license": "MIT",
+  "bin": {
+    "kern": "./bin/kern"
+  },
+  "scripts": {
+    "postinstall": "node install.js",
+    "build": "node install.js --build-only",
+    "clean": "rm -f bin/kern"
+  },
+  "files": [
+    "bin/.gitkeep",
+    "cmd/",
+    "internal/",
+    "main.go",
+    "go.mod",
+    "install.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
+}
