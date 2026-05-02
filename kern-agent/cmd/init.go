@@ -3,10 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
+	"github.com/kern-dev/kern-agent/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -104,6 +108,42 @@ if command -v kern > /dev/null 2>&1
 end
 `
 
+// dashboardURL derives the web dashboard URL from the configured API endpoint.
+// e.g. "https://kern.dev/api" → "https://kern.dev"
+//      "https://kern.dev/api/" → "https://kern.dev"
+//      "https://kern.dev"      → "https://kern.dev"
+func dashboardURL(apiEndpoint string) string {
+	u := strings.TrimRight(apiEndpoint, "/")
+	if strings.HasSuffix(u, "/api") {
+		return strings.TrimSuffix(u, "/api")
+	}
+	return u
+}
+
+// termLink returns an ANSI OSC 8 hyperlink that renders as a clickable link
+// in terminals that support it (iTerm2, Warp, GNOME Terminal, Windows Terminal, etc.)
+func termLink(text, url string) string {
+	return fmt.Sprintf("\033]8;;%s\033\\%s\033]8;;\033\\", url, text)
+}
+
+// openBrowser launches the user's default browser to the given URL.
+// It fires-and-forgets: errors are silently ignored so init never fails
+// just because xdg-open isn't installed.
+func openBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	default:
+		// Linux and everything else
+		cmd = exec.Command("xdg-open", url)
+	}
+	// Detach fully — we don't care about the exit code
+	_ = cmd.Start()
+}
+
 func runInit(cmd *cobra.Command, args []string) error {
 	shell := forceShell
 	if shell == "" {
@@ -113,6 +153,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	bold := color.New(color.Bold)
 	green := color.New(color.FgGreen)
 	cyan := color.New(color.FgCyan)
+	dim := color.New(color.Faint)
 
 	bold.Printf("\n  KERN_ shell hook installer\n\n")
 	fmt.Printf("  Detected shell: %s\n\n", cyan.Sprint(shell))
@@ -122,22 +163,24 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot find home directory: %w", err)
 	}
 
+	var sourceCmd string
+
 	switch shell {
 	case "zsh":
 		target := filepath.Join(home, ".zshrc")
 		if err := appendIfMissing(target, zshHook, "KERN terminal hooks"); err != nil {
 			return err
 		}
-		green.Printf("  ✓ Hooks added to %s\n", target)
-		fmt.Printf("  Run: %s\n\n", cyan.Sprint("source ~/.zshrc"))
+		green.Printf("  ✓  Shell hook added to %s\n", target)
+		sourceCmd = "source ~/.zshrc"
 
 	case "bash":
 		target := filepath.Join(home, ".bashrc")
 		if err := appendIfMissing(target, bashHook, "KERN terminal hooks"); err != nil {
 			return err
 		}
-		green.Printf("  ✓ Hooks added to %s\n", target)
-		fmt.Printf("  Run: %s\n\n", cyan.Sprint("source ~/.bashrc"))
+		green.Printf("  ✓  Shell hook added to %s\n", target)
+		sourceCmd = "source ~/.bashrc"
 
 	case "fish":
 		dir := filepath.Join(home, ".config", "fish", "conf.d")
@@ -148,16 +191,69 @@ func runInit(cmd *cobra.Command, args []string) error {
 		if err := os.WriteFile(target, []byte(fishHook), 0644); err != nil {
 			return err
 		}
-		green.Printf("  ✓ Hook file written to %s\n", target)
-		fmt.Printf("  Run: %s\n\n", cyan.Sprint("exec fish"))
+		green.Printf("  ✓  Hook file written to %s\n", target)
+		sourceCmd = "exec fish"
 
 	default:
 		return fmt.Errorf("unsupported shell %q — use --shell to specify zsh, bash, or fish", shell)
 	}
 
-	bold.Println("  KERN is now active. Every command you run will be captured.")
-	fmt.Println("  Run `kern status` to see your local buffer.")
+	// ── Load config and derive dashboard URL ───────────────────────────────
+	cfg, _ := config.Load()
+	dashURL := dashboardURL(cfg.APIEndpoint)
+
+	configured := cfg.APIEndpoint != "" && cfg.APIEndpoint != config.DefaultConfig().APIEndpoint
+
 	fmt.Println()
+	green.Println("  ✓  Local buffer initialized at ~/.kern/events.db")
+	fmt.Println()
+
+	// ── Dashboard section ──────────────────────────────────────────────────
+	bold.Println("  ─────────────────────────────────────────────")
+	bold.Println("  Your KERN Dashboard")
+	bold.Println("  ─────────────────────────────────────────────")
+	fmt.Println()
+
+	if configured {
+		// Show clickable hyperlink (OSC 8 — works in iTerm2, Warp, GNOME Terminal, Windows Terminal)
+		link := termLink(dashURL, dashURL)
+		fmt.Printf("  %s  %s\n", green.Sprint("→"), link)
+		fmt.Println()
+		fmt.Printf("  %s\n", dim.Sprint("Opening in your browser…"))
+		fmt.Println()
+
+		// Small pause so the output is readable before the browser pops
+		time.Sleep(400 * time.Millisecond)
+		openBrowser(dashURL)
+	} else {
+		// API endpoint hasn't been configured yet — guide them
+		fmt.Printf("  %s %s\n",
+			dim.Sprint("Dashboard URL:"),
+			cyan.Sprint(dashURL),
+		)
+		fmt.Println()
+		fmt.Printf("  %s Configure your endpoint and API key to activate:\n\n", dim.Sprint("→"))
+		fmt.Printf("    %s\n", cyan.Sprintf("kern config --endpoint https://your-kern-host/api --key YOUR_API_KEY"))
+		fmt.Println()
+		fmt.Printf("  %s Then run %s to open your dashboard.\n",
+			dim.Sprint("→"),
+			cyan.Sprint("kern dashboard"),
+		)
+	}
+
+	fmt.Println()
+	bold.Println("  ─────────────────────────────────────────────")
+	fmt.Println()
+
+	// ── Shell reload reminder ──────────────────────────────────────────────
+	bold.Println("  KERN is now active.")
+	fmt.Println("  Every command you run will be captured automatically.")
+	fmt.Println()
+	fmt.Printf("  Reload your shell:  %s\n", cyan.Sprint(sourceCmd))
+	fmt.Printf("  Check buffer:       %s\n", cyan.Sprint("kern status"))
+	fmt.Printf("  Sync now:           %s\n", cyan.Sprint("kern sync"))
+	fmt.Println()
+
 	return nil
 }
 
