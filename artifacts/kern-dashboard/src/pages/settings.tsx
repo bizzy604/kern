@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useGetMe, getGetMeQueryKey, type Developer } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -485,7 +485,7 @@ const COMMON_TIMEZONES = [
 ];
 
 interface ProfileCardProps {
-  me: ReturnType<typeof useGetMe>["data"];
+  me: Developer | undefined;
   isLoading: boolean;
 }
 
