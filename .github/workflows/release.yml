@@ -14,6 +14,7 @@ jobs:
     name: Build ${{ matrix.asset }}
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - goos: linux
@@ -65,6 +66,7 @@ jobs:
   # ── 2. Create GitHub Release and attach binaries ───────────────────────────
   release:
     needs: build
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -100,10 +102,12 @@ jobs:
             | macOS x64 | `kern-darwin-x64` |
             | macOS arm64 (M1/M2) | `kern-darwin-arm64` |
             | Windows x64 | `kern-windows-x64.exe` |
+            | Windows arm64 | `kern-windows-arm64.exe` |
 
   # ── 3. Publish to npm ───────────────────────────────────────────────────────
   publish-npm:
     needs: release
+    if: always() && needs.release.result != 'skipped'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

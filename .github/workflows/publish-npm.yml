@@ -1,0 +1,35 @@
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "npm version to publish (e.g. 1.0.0)"
+        required: true
+        default: "1.0.0"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "v${{ github.event.inputs.version }}"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Set version in package.json
+        working-directory: kern-agent
+        run: npm version "${{ github.event.inputs.version }}" --no-git-tag-version
+
+      - name: Publish kern-agent to npm
+        working-directory: kern-agent
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summary
+        run: echo "✓ kern-agent@${{ github.event.inputs.version }} published to npm"
