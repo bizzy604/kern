@@ -47,3 +47,11 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# kern-agent native binaries (downloaded/compiled by postinstall — never committed)
+kern-agent/bin/kern-native
+kern-agent/bin/kern-native.exe
+kern-agent/bin/kern.exe
+kern-agent/bin/kern.cmd
+kern-agent/bin/kern.ps1
+kern-agent/bin/kern.tmp
