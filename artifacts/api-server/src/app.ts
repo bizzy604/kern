@@ -1,5 +1,6 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import { createGunzip } from "zlib";
 import router from "./routes";
@@ -47,7 +48,8 @@ app.use(
     },
   }),
 );
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
+app.use(cookieParser(process.env["SESSION_SECRET"] || "kern-dev-secret"));
 app.use(decompressGzip);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

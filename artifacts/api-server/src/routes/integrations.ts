@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { integrationsTable, developersTable, gitCommitsTable } from "@workspace/db";
-import { eq, and, asc } from "drizzle-orm";
+import { integrationsTable, gitCommitsTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { requireSession } from "../middleware/session";
 
 const router = Router();
 
@@ -16,50 +17,24 @@ interface IntegrationStatus {
   connectedAt: string | null;
 }
 
-async function getDevId(): Promise<number | null> {
-  const rows = await db
-    .select({ id: developersTable.id })
-    .from(developersTable)
-    .orderBy(asc(developersTable.id))
-    .limit(1);
-  return rows[0]?.id ?? null;
-}
-
-router.get("/integrations", async (req, res) => {
+router.get("/integrations", requireSession, async (req, res) => {
   try {
-    const devId = await getDevId();
-    if (!devId) return res.status(404).json({ error: "No developer found" });
+    const devId = req.developer!.id;
 
-    const rows = await db
-      .select()
-      .from(integrationsTable)
-      .where(eq(integrationsTable.developerId, devId));
+    const rows = await db.select().from(integrationsTable).where(eq(integrationsTable.developerId, devId));
 
-    const hasCommits =
-      (
-        await db
-          .select({ id: gitCommitsTable.id })
-          .from(gitCommitsTable)
-          .where(eq(gitCommitsTable.developerId, devId))
-          .limit(1)
-      ).length > 0;
+    const hasCommits = (
+      await db.select({ id: gitCommitsTable.id }).from(gitCommitsTable)
+        .where(eq(gitCommitsTable.developerId, devId)).limit(1)
+    ).length > 0;
 
     const connected = new Map(rows.map(r => [r.type, r]));
-
     const result: IntegrationStatus[] = INTEGRATION_TYPES.map(type => {
       const row = connected.get(type);
-      const isConnected =
-        type === "github" ? hasCommits || !!row : !!row;
+      const isConnected = type === "github" ? hasCommits || !!row : !!row;
       let config: Record<string, string> = {};
-      if (row?.config) {
-        try { config = JSON.parse(row.config); } catch { /* ignore */ }
-      }
-      return {
-        type,
-        connected: isConnected,
-        config,
-        connectedAt: row?.connectedAt?.toISOString() ?? null,
-      };
+      if (row?.config) { try { config = JSON.parse(row.config); } catch { /* ignore */ } }
+      return { type, connected: isConnected, config, connectedAt: row?.connectedAt?.toISOString() ?? null };
     });
 
     return res.json({ integrations: result });
@@ -74,47 +49,27 @@ const SlackConnectBody = z.object({
   channelName: z.string().max(80).optional(),
 });
 
-router.post("/integrations/slack", async (req, res) => {
+router.post("/integrations/slack", requireSession, async (req, res) => {
   try {
     const parsed = SlackConnectBody.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: "Invalid webhook URL — must be a Slack incoming webhook (https://hooks.slack.com/…)",
-      });
+      return res.status(400).json({ error: "Invalid webhook URL — must be a Slack incoming webhook (https://hooks.slack.com/…)" });
     }
     const { webhookUrl, channelName } = parsed.data;
 
-    // Test the webhook before saving
     const testRes = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: "✅ KERN connected successfully — your standups will be posted here.",
-        username: "KERN",
-        icon_emoji: ":writing_hand:",
-      }),
+      body: JSON.stringify({ text: "✅ KERN connected successfully — your standups will be posted here.", username: "KERN", icon_emoji: ":writing_hand:" }),
     });
-
-    if (!testRes.ok) {
-      return res.status(400).json({ error: "Slack webhook test failed — check the URL and try again" });
-    }
-
+    if (!testRes.ok) return res.status(400).json({ error: "Slack webhook test failed — check the URL and try again" });
     const testBody = await testRes.text();
-    if (testBody !== "ok") {
-      return res.status(400).json({ error: `Slack returned: ${testBody}` });
-    }
+    if (testBody !== "ok") return res.status(400).json({ error: `Slack returned: ${testBody}` });
 
-    const devId = await getDevId();
-    if (!devId) return res.status(404).json({ error: "No developer found" });
+    const devId = req.developer!.id;
+    const config = JSON.stringify({ webhookUrl, channelName: channelName ?? "" });
 
-    const config = JSON.stringify({
-      webhookUrl,
-      channelName: channelName ?? "",
-    });
-
-    await db
-      .insert(integrationsTable)
-      .values({ developerId: devId, type: "slack", config })
+    await db.insert(integrationsTable).values({ developerId: devId, type: "slack", config })
       .onConflictDoUpdate({
         target: [integrationsTable.developerId, integrationsTable.type],
         set: { config, connectedAt: new Date() },
@@ -128,20 +83,10 @@ router.post("/integrations/slack", async (req, res) => {
   }
 });
 
-router.delete("/integrations/slack", async (req, res) => {
+router.delete("/integrations/slack", requireSession, async (req, res) => {
   try {
-    const devId = await getDevId();
-    if (!devId) return res.status(404).json({ error: "No developer found" });
-
-    await db
-      .delete(integrationsTable)
-      .where(
-        and(
-          eq(integrationsTable.developerId, devId),
-          eq(integrationsTable.type, "slack"),
-        ),
-      );
-
+    const devId = req.developer!.id;
+    await db.delete(integrationsTable).where(and(eq(integrationsTable.developerId, devId), eq(integrationsTable.type, "slack")));
     req.log.info({ devId }, "Slack integration disconnected");
     return res.json({ success: true });
   } catch (err) {

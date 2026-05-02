@@ -1,92 +1,53 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import {
-  standupsTable,
-  developersTable,
-  workSessionsTable,
-  gitCommitsTable,
-} from "@workspace/db";
-import { eq, and, gte, lte, desc, asc } from "drizzle-orm";
+import { standupsTable, workSessionsTable, gitCommitsTable } from "@workspace/db";
+import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { requireSession } from "../middleware/session";
 
 const router = Router();
 
-router.post("/standups/generate", async (req, res) => {
+router.post("/standups/generate", requireSession, async (req, res) => {
   try {
-    const developer = await db.select().from(developersTable).orderBy(asc(developersTable.id)).limit(1);
-    if (!developer[0]) return res.status(404).json({ error: "No developer found" });
-    const dev = developer[0];
-
+    const dev = req.developer!;
     const today = new Date().toISOString().split("T")[0];
 
-    // Gather yesterday's sessions (the most useful for a morning standup)
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yStart = new Date(yesterday.toISOString().split("T")[0] + "T00:00:00.000Z");
     const yEnd = new Date(yesterday.toISOString().split("T")[0] + "T23:59:59.999Z");
-
-    // Also grab today's sessions so far
     const tStart = new Date(today + "T00:00:00.000Z");
     const tEnd = new Date(today + "T23:59:59.999Z");
 
     const [yesterdaySessions, todaySessions, recentCommits] = await Promise.all([
-      db
-        .select()
-        .from(workSessionsTable)
-        .where(
-          and(
-            eq(workSessionsTable.developerId, dev.id),
-            gte(workSessionsTable.startedAt, yStart),
-            lte(workSessionsTable.startedAt, yEnd),
-          ),
-        )
-        .orderBy(desc(workSessionsTable.startedAt))
-        .limit(20),
-      db
-        .select()
-        .from(workSessionsTable)
-        .where(
-          and(
-            eq(workSessionsTable.developerId, dev.id),
-            gte(workSessionsTable.startedAt, tStart),
-            lte(workSessionsTable.startedAt, tEnd),
-          ),
-        )
-        .orderBy(desc(workSessionsTable.startedAt))
-        .limit(10),
-      db
-        .select()
-        .from(gitCommitsTable)
+      db.select().from(workSessionsTable)
+        .where(and(eq(workSessionsTable.developerId, dev.id), gte(workSessionsTable.startedAt, yStart), lte(workSessionsTable.startedAt, yEnd)))
+        .orderBy(desc(workSessionsTable.startedAt)).limit(20),
+      db.select().from(workSessionsTable)
+        .where(and(eq(workSessionsTable.developerId, dev.id), gte(workSessionsTable.startedAt, tStart), lte(workSessionsTable.startedAt, tEnd)))
+        .orderBy(desc(workSessionsTable.startedAt)).limit(10),
+      db.select().from(gitCommitsTable)
         .where(eq(gitCommitsTable.developerId, dev.id))
-        .orderBy(desc(gitCommitsTable.committedAt))
-        .limit(10),
+        .orderBy(desc(gitCommitsTable.committedAt)).limit(10),
     ]);
 
     const allSessions = [...yesterdaySessions, ...todaySessions];
 
-    // Summarise sessions into readable text
     const sessionSummary = allSessions.length
-      ? allSessions
-          .map(
-            s =>
-              `- ${s.activityType} on ${s.project || "unknown project"} for ${s.durationMinutes}m` +
-              (s.inferredTask ? `: "${s.inferredTask}"` : "") +
-              (s.language ? ` [${s.language}]` : ""),
-          )
-          .join("\n")
+      ? allSessions.map(s =>
+          `- ${s.activityType} on ${s.project || "unknown project"} for ${s.durationMinutes}m` +
+          (s.inferredTask ? `: "${s.inferredTask}"` : "") +
+          (s.language ? ` [${s.language}]` : ""),
+        ).join("\n")
       : "No sessions recorded.";
 
     const commitSummary = recentCommits.length
-      ? recentCommits
-          .map(
-            c =>
-              `- [${c.shortHash}] ${c.branch}: ${c.message}` +
-              ` (+${c.insertions}/-${c.deletions} in ${c.filesChanged} files, project: ${c.project || "unknown"})`,
-          )
-          .join("\n")
+      ? recentCommits.map(c =>
+          `- [${c.shortHash}] ${c.branch}: ${c.message}` +
+          ` (+${c.insertions}/-${c.deletions} in ${c.filesChanged} files, project: ${c.project || "unknown"})`,
+        ).join("\n")
       : "No recent commits.";
 
-    // Total time stats
     const totalMins = allSessions.reduce((sum, s) => sum + s.durationMinutes, 0);
     const hours = Math.floor(totalMins / 60);
     const mins = totalMins % 60;
@@ -118,13 +79,11 @@ Rules:
 - If there are commits, mention the key ones naturally
 - Write as ${dev.name} speaking in first person`;
 
-    // Set up SSE for streaming
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
     let fullContent = "";
-
     const stream = anthropic.messages.stream({
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
@@ -132,42 +91,25 @@ Rules:
     });
 
     for await (const event of stream) {
-      if (
-        event.type === "content_block_delta" &&
-        event.delta.type === "text_delta"
-      ) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
         fullContent += event.delta.text;
         res.write(`data: ${JSON.stringify({ content: event.delta.text })}\n\n`);
       }
     }
 
-    // Upsert the standup for today
-    const existing = await db
-      .select()
-      .from(standupsTable)
-      .where(
-        and(eq(standupsTable.developerId, dev.id), eq(standupsTable.date, today)),
-      )
-      .limit(1);
+    const existing = await db.select().from(standupsTable)
+      .where(and(eq(standupsTable.developerId, dev.id), eq(standupsTable.date, today))).limit(1);
 
     let savedId: number;
     if (existing[0]) {
-      const updated = await db
-        .update(standupsTable)
+      const updated = await db.update(standupsTable)
         .set({ content: fullContent, source: "AI", generatedAt: new Date() })
         .where(eq(standupsTable.id, existing[0].id))
         .returning({ id: standupsTable.id });
       savedId = updated[0].id;
     } else {
-      const inserted = await db
-        .insert(standupsTable)
-        .values({
-          developerId: dev.id,
-          date: today,
-          content: fullContent,
-          source: "AI",
-          postedToSlack: false,
-        })
+      const inserted = await db.insert(standupsTable)
+        .values({ developerId: dev.id, date: today, content: fullContent, source: "AI", postedToSlack: false })
         .returning({ id: standupsTable.id });
       savedId = inserted[0].id;
     }
@@ -176,9 +118,7 @@ Rules:
     res.end();
   } catch (err) {
     req.log.error({ err }, "Failed to generate standup");
-    if (!res.headersSent) {
-      return res.status(500).json({ error: "Failed to generate standup" });
-    }
+    if (!res.headersSent) return res.status(500).json({ error: "Failed to generate standup" });
     res.write(`data: ${JSON.stringify({ error: "Generation failed" })}\n\n`);
     res.end();
   }

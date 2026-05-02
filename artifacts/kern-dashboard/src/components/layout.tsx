@@ -1,19 +1,28 @@
 import { ReactNode, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Activity, LayoutDashboard, Users, FileText, Settings, Terminal, Menu } from "lucide-react";
+import { Activity, LayoutDashboard, Users, FileText, Settings, Terminal, Menu, LogOut } from "lucide-react";
 import { useGetMe } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/auth";
+import { useLocation as useWouterLocation } from "wouter";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { data: me, isLoading } = useGetMe();
+  const { logout } = useAuth();
+  const [, navigate] = useWouterLocation();
 
   useEffect(() => {
     document.documentElement.classList.add("dark");
   }, []);
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
+  };
 
   const links = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -29,12 +38,12 @@ export function Layout({ children }: { children: ReactNode }) {
         const isActive = location === link.href || (link.href !== "/" && location.startsWith(link.href));
         const Icon = link.icon;
         return (
-          <Link 
-            key={link.href} 
+          <Link
+            key={link.href}
             href={link.href}
             className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-              isActive 
-                ? "bg-primary/20 text-accent border border-accent/20 shadow-[0_0_10px_rgba(0,123,114,0.1)]" 
+              isActive
+                ? "bg-primary/20 text-accent border border-accent/20 shadow-[0_0_10px_rgba(0,123,114,0.1)]"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
             data-testid={`nav-${link.label.toLowerCase()}`}
@@ -48,17 +57,27 @@ export function Layout({ children }: { children: ReactNode }) {
   );
 
   const UserProfile = () => (
-    <div className="flex items-center w-full">
-      <Avatar className="h-10 w-10 border border-border">
+    <div className="flex items-center w-full gap-2">
+      <Avatar className="h-9 w-9 border border-border flex-shrink-0">
         <AvatarImage src={me?.avatarUrl || ""} alt={me?.name || ""} />
-        <AvatarFallback className="bg-primary text-primary-foreground font-mono">
+        <AvatarFallback className="bg-primary text-primary-foreground font-mono text-sm">
           {me?.name?.charAt(0) || "?"}
         </AvatarFallback>
       </Avatar>
-      <div className="ml-3 flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden min-w-0">
         <p className="text-sm font-medium text-foreground truncate">{me?.name}</p>
         <p className="text-xs text-muted-foreground truncate font-mono">{me?.role}</p>
       </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-8 p-0 flex-shrink-0 text-muted-foreground hover:text-foreground"
+        onClick={handleLogout}
+        title="Sign out"
+        data-testid="button-logout"
+      >
+        <LogOut className="h-4 w-4" />
+      </Button>
     </div>
   );
 
@@ -71,7 +90,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <Terminal className="h-6 w-6 text-accent mr-2" />
           <span className="font-mono font-bold tracking-tight text-lg text-foreground">KERN_</span>
         </div>
-        
+
         <nav className="flex-1 py-6 px-3 space-y-1 relative z-10">
           <NavLinks />
         </nav>
@@ -79,8 +98,8 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="p-4 border-t border-border relative z-10 bg-card">
           {isLoading ? (
             <div className="flex items-center space-x-3">
-              <Skeleton className="h-10 w-10 rounded-full" />
-              <div className="space-y-2">
+              <Skeleton className="h-9 w-9 rounded-full" />
+              <div className="space-y-2 flex-1">
                 <Skeleton className="h-4 w-24" />
                 <Skeleton className="h-3 w-32" />
               </div>
@@ -94,37 +113,38 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-background to-background pointer-events-none" />
-        
+
         {/* Mobile Header */}
         <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 md:hidden relative z-10">
-           <div className="flex items-center">
-             <Terminal className="h-6 w-6 text-accent mr-2" />
-             <span className="font-mono font-bold">KERN_</span>
-           </div>
-           <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden text-foreground">
-                <Menu className="h-6 w-6" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0 bg-card border-r border-border flex flex-col">
-              <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
-              <div className="h-16 flex items-center px-6 border-b border-border">
-                <Terminal className="h-6 w-6 text-accent mr-2" />
-                <span className="font-mono font-bold tracking-tight text-lg">KERN_</span>
-              </div>
-              <nav className="flex-1 py-6 px-3 space-y-1">
-                <NavLinks />
-              </nav>
-              <div className="p-4 border-t border-border">
-                {isLoading ? (
-                  <Skeleton className="h-10 w-full" />
-                ) : me ? (
-                  <UserProfile />
-                ) : null}
-              </div>
-            </SheetContent>
-          </Sheet>
+          <div className="flex items-center">
+            <Terminal className="h-6 w-6 text-accent mr-2" />
+            <span className="font-mono font-bold">KERN_</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground" onClick={handleLogout} title="Sign out">
+              <LogOut className="h-4 w-4" />
+            </Button>
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden text-foreground">
+                  <Menu className="h-6 w-6" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-64 p-0 bg-card border-r border-border flex flex-col">
+                <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                <div className="h-16 flex items-center px-6 border-b border-border">
+                  <Terminal className="h-6 w-6 text-accent mr-2" />
+                  <span className="font-mono font-bold tracking-tight text-lg">KERN_</span>
+                </div>
+                <nav className="flex-1 py-6 px-3 space-y-1">
+                  <NavLinks />
+                </nav>
+                <div className="p-4 border-t border-border">
+                  {isLoading ? <Skeleton className="h-10 w-full" /> : me ? <UserProfile /> : null}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 relative z-10">
