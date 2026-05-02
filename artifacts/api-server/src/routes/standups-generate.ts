@@ -6,14 +6,14 @@ import {
   workSessionsTable,
   gitCommitsTable,
 } from "@workspace/db";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, asc } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router = Router();
 
 router.post("/standups/generate", async (req, res) => {
   try {
-    const developer = await db.select().from(developersTable).limit(1);
+    const developer = await db.select().from(developersTable).orderBy(asc(developersTable.id)).limit(1);
     if (!developer[0]) return res.status(404).json({ error: "No developer found" });
     const dev = developer[0];
 

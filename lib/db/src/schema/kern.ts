@@ -16,6 +16,7 @@ export const developersTable = pgTable("developers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
+  apiKey: text("api_key").unique(),
   avatarUrl: text("avatar_url"),
   githubHandle: text("github_handle"),
   teamId: integer("team_id").references(() => teamsTable.id),

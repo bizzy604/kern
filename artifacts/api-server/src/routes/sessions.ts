@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { workSessionsTable, developersTable } from "@workspace/db";
-import { eq, desc, and, gte, lte } from "drizzle-orm";
+import { eq, desc, and, gte, lte, asc } from "drizzle-orm";
 import { ListSessionsQueryParams, GetSessionParams } from "@workspace/api-zod";
 
 const router = Router();
@@ -14,7 +14,7 @@ router.get("/sessions", async (req, res) => {
     }
     const { limit = 20, offset = 0, date } = parsed.data;
 
-    const developer = await db.select().from(developersTable).limit(1);
+    const developer = await db.select().from(developersTable).orderBy(asc(developersTable.id)).limit(1);
     if (!developer[0]) return res.status(404).json({ error: "No developer found" });
     const devId = developer[0].id;
 

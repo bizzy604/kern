@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { standupsTable, developersTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, asc } from "drizzle-orm";
 import {
   ListStandupsQueryParams,
   GetStandupParams,
@@ -22,7 +22,7 @@ function formatStandup(s: typeof standupsTable.$inferSelect) {
 
 router.get("/standups/today", async (req, res) => {
   try {
-    const developer = await db.select().from(developersTable).limit(1);
+    const developer = await db.select().from(developersTable).orderBy(asc(developersTable.id)).limit(1);
     if (!developer[0]) return res.status(404).json({ error: "No developer found" });
 
     const today = new Date().toISOString().split("T")[0];
@@ -47,7 +47,7 @@ router.get("/standups", async (req, res) => {
     }
     const { limit = 10, offset = 0 } = parsed.data;
 
-    const developer = await db.select().from(developersTable).limit(1);
+    const developer = await db.select().from(developersTable).orderBy(asc(developersTable.id)).limit(1);
     if (!developer[0]) return res.status(404).json({ error: "No developer found" });
 
     const standups = await db
@@ -129,12 +129,34 @@ router.post("/standups/:id/post", async (req, res) => {
 
     if (!standup[0]) return res.status(404).json({ error: "Standup not found" });
 
+    const webhookUrl = process.env["SLACK_WEBHOOK_URL"];
+    if (webhookUrl) {
+      const slackRes = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: standup[0].content,
+          username: "KERN",
+          icon_emoji: ":writing_hand:",
+        }),
+      });
+      if (!slackRes.ok) {
+        req.log.error({ status: slackRes.status }, "Slack webhook returned non-OK status");
+        return res.status(502).json({ error: "Slack webhook failed" });
+      }
+    } else {
+      req.log.warn("SLACK_WEBHOOK_URL not set — marking posted without sending to Slack");
+    }
+
     await db
       .update(standupsTable)
       .set({ postedToSlack: true, postedAt: new Date() })
       .where(eq(standupsTable.id, parsed.data.id));
 
-    return res.json({ success: true, message: "Standup posted to Slack successfully" });
+    return res.json({
+      success: true,
+      message: webhookUrl ? "Standup posted to Slack successfully" : "Marked as posted (no webhook configured)",
+    });
   } catch (err) {
     req.log.error({ err }, "Failed to post standup to Slack");
     return res.status(500).json({ error: "Internal server error" });

@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { gitCommitsTable, developersTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, asc } from "drizzle-orm";
+import { requireApiKey } from "../middleware/auth";
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.get("/git/commits", async (req, res) => {
     const limit = clamp(req.query.limit, 1, 100, 20);
     const offset = clamp(req.query.offset, 0, 100000, 0);
 
-    const developer = await db.select().from(developersTable).limit(1);
+    const developer = await db.select().from(developersTable).orderBy(asc(developersTable.id)).limit(1);
     if (!developer[0]) return res.status(404).json({ error: "No developer found" });
 
     const commits = await db
@@ -61,11 +62,9 @@ router.get("/git/commits", async (req, res) => {
 });
 
 // Ingest endpoint called by the kern agent sync
-router.post("/git/ingest", async (req, res) => {
+router.post("/git/ingest", requireApiKey, async (req, res) => {
   try {
-    const developer = await db.select().from(developersTable).limit(1);
-    if (!developer[0]) return res.status(404).json({ error: "No developer found" });
-    const devId = developer[0].id;
+    const devId = req.developer!.id;
 
     const rawCommits = req.body?.gitCommits;
     if (!Array.isArray(rawCommits)) {

@@ -7,12 +7,14 @@ import dashboardRouter from "./dashboard";
 import teamRouter from "./team";
 import gitRouter from "./git";
 import standupsGenerateRouter from "./standups-generate";
+import sessionsIngestRouter from "./sessions-ingest";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(developersRouter);
 router.use(sessionsRouter);
+router.use(sessionsIngestRouter);
 router.use(standupsRouter);
 router.use(standupsGenerateRouter);
 router.use(dashboardRouter);
