@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
   Check, X, Github, Slack, Terminal, Shield, Bell, Key,
-  Copy, Eye, EyeOff, ExternalLink, Loader2, Unplug, Plug,
+  Copy, Eye, EyeOff, ExternalLink, Loader2, Unplug, Plug, Pencil,
 } from "lucide-react";
 import { SiJira, SiAsana } from "react-icons/si";
 
@@ -312,6 +313,139 @@ function GenericIntegrationCard({ meta, status }: { meta: GenericIntegration; st
   );
 }
 
+/* ─── Editable profile card ─────────────────────────────────────── */
+
+const COMMON_TIMEZONES = [
+  "UTC", "America/New_York", "America/Chicago", "America/Denver",
+  "America/Los_Angeles", "America/Toronto", "America/Vancouver",
+  "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Amsterdam",
+  "Asia/Kolkata", "Asia/Tokyo", "Asia/Singapore", "Asia/Dubai",
+  "Australia/Sydney", "Pacific/Auckland",
+];
+
+interface ProfileCardProps {
+  me: ReturnType<typeof useGetMe>["data"];
+  isLoading: boolean;
+}
+
+function ProfileCard({ me, isLoading }: ProfileCardProps) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ name: "", email: "", githubHandle: "", timezone: "UTC" });
+
+  const startEdit = () => {
+    if (!me) return;
+    setForm({
+      name: me.name ?? "",
+      email: me.email ?? "",
+      githubHandle: me.githubHandle ?? "",
+      timezone: me.timezone ?? "UTC",
+    });
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/developers/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          githubHandle: form.githubHandle,
+          timezone: form.timezone,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: "Update failed", description: data.error ?? "Could not update profile.", variant: "destructive" });
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+      toast({ title: "Profile updated", description: "Your profile has been saved." });
+      setEditing(false);
+    } catch {
+      toast({ title: "Network error", description: "Could not reach the server.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-6 space-y-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-3">
+          <Terminal className="h-4 w-4 text-accent" />
+          <h2 className="text-sm font-semibold text-foreground">Profile</h2>
+        </div>
+        {!isLoading && me && !editing && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground border border-border"
+            onClick={startEdit}>
+            <Pencil className="h-3 w-3" /> Edit
+          </Button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+      ) : editing ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Name</label>
+              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                className="text-xs font-mono h-8 bg-background border-border" placeholder="Your name" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Email</label>
+              <Input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                className="text-xs font-mono h-8 bg-background border-border" placeholder="you@example.com" type="email" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-mono text-muted-foreground uppercase tracking-widest">GitHub handle</label>
+              <Input value={form.githubHandle} onChange={e => setForm(f => ({ ...f, githubHandle: e.target.value }))}
+                className="text-xs font-mono h-8 bg-background border-border" placeholder="username (no @)" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Timezone</label>
+              <select value={form.timezone} onChange={e => setForm(f => ({ ...f, timezone: e.target.value }))}
+                className="w-full h-8 text-xs font-mono bg-background border border-border rounded-md px-2 text-foreground">
+                {COMMON_TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <Button size="sm" className="h-7 text-xs bg-accent hover:bg-accent/90 text-background"
+              onClick={handleSave} disabled={saving || !form.name.trim() || !form.email.trim()}>
+              {saving ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Saving…</> : <><Check className="h-3 w-3 mr-1" />Save</>}
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditing(false)} disabled={saving}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : me ? (
+        <div>
+          <InfoRow label="Name" value={me.name} />
+          <InfoRow label="Email" value={me.email} mono />
+          <InfoRow label="GitHub" value={me.githubHandle ? `@${me.githubHandle}` : null} mono />
+          <InfoRow label="Team" value={me.teamName} />
+          <div className="flex items-center justify-between py-3 border-b border-border last:border-0">
+            <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Role</span>
+            <RoleBadge role={me.role} />
+          </div>
+          <InfoRow label="Timezone" value={me.timezone} mono />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /* ─── Main page ────────────────────────────────────────────────── */
 
 export default function Settings() {
@@ -328,27 +462,7 @@ export default function Settings() {
       </div>
 
       {/* Profile */}
-      <div className="rounded-lg border border-border bg-card p-6 space-y-4">
-        <div className="flex items-center gap-3 mb-2">
-          <Terminal className="h-4 w-4 text-accent" />
-          <h2 className="text-sm font-semibold text-foreground">Profile</h2>
-        </div>
-        {isLoading ? (
-          <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
-        ) : me ? (
-          <div>
-            <InfoRow label="Name" value={me.name} />
-            <InfoRow label="Email" value={me.email} mono />
-            <InfoRow label="GitHub" value={me.githubHandle ? `@${me.githubHandle}` : null} mono />
-            <InfoRow label="Team" value={me.teamName} />
-            <div className="flex items-center justify-between py-3 border-b border-border last:border-0">
-              <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Role</span>
-              <RoleBadge role={me.role} />
-            </div>
-            <InfoRow label="Timezone" value={me.timezone} mono />
-          </div>
-        ) : null}
-      </div>
+      <ProfileCard me={me} isLoading={isLoading} />
 
       {/* API Key */}
       <ApiKeyCard />

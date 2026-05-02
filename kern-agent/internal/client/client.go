@@ -198,6 +198,58 @@ func (c *Client) Sync(sessions []Session, gitCommits []GitCommitPayload) (*SyncR
         return &result, nil
 }
 
+// RegisterRequest is the payload for creating a new developer account.
+type RegisterRequest struct {
+        Name         string `json:"name"`
+        Email        string `json:"email"`
+        GithubHandle string `json:"githubHandle,omitempty"`
+        Timezone     string `json:"timezone,omitempty"`
+}
+
+// RegisterResult is the response from the register endpoint.
+type RegisterResult struct {
+        ID           int    `json:"id"`
+        Name         string `json:"name"`
+        Email        string `json:"email"`
+        GithubHandle string `json:"githubHandle"`
+        Role         string `json:"role"`
+        Timezone     string `json:"timezone"`
+        APIKey       string `json:"apiKey"`
+}
+
+// Register creates a new developer account and returns the API key.
+func (c *Client) Register(req RegisterRequest) (*RegisterResult, error) {
+        body, err := json.Marshal(req)
+        if err != nil {
+                return nil, err
+        }
+
+        httpReq, err := http.NewRequest("POST", c.endpoint+"/developers/register", bytes.NewReader(body))
+        if err != nil {
+                return nil, err
+        }
+        httpReq.Header.Set("Content-Type", "application/json")
+
+        resp, err := c.httpClient.Do(httpReq)
+        if err != nil {
+                return nil, fmt.Errorf("request failed: %w", err)
+        }
+        defer resp.Body.Close()
+
+        if resp.StatusCode == 409 {
+                return nil, fmt.Errorf("email already registered — run `kern config --endpoint %s --key <your-key>` to log in", c.endpoint)
+        }
+        if resp.StatusCode >= 400 {
+                return nil, fmt.Errorf("server returned %d", resp.StatusCode)
+        }
+
+        var result RegisterResult
+        if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+                return nil, fmt.Errorf("could not parse response: %w", err)
+        }
+        return &result, nil
+}
+
 // Ping checks if the KERN API is reachable.
 func (c *Client) Ping() error {
         req, err := http.NewRequest("GET", c.endpoint+"/healthz", nil)

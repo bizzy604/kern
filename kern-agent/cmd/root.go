@@ -19,6 +19,7 @@ buffers it locally in SQLite, and syncs it to the KERN dashboard.
   kern sync          Flush buffered events to the KERN API
   kern daemon        Run background sync daemon
   kern status        Show local buffer stats and recent events
+  kern register      Create a KERN account and save your API key
   kern config        Show or set configuration values
   kern dashboard     Open the KERN dashboard in your browser`,
         Version: "1.0.0",
@@ -37,6 +38,7 @@ func init() {
         rootCmd.AddCommand(syncCmd)
         rootCmd.AddCommand(daemonCmd)
         rootCmd.AddCommand(statusCmd)
+        rootCmd.AddCommand(registerCmd)
         rootCmd.AddCommand(configCmd)
         rootCmd.AddCommand(dashboardCmd)
 }

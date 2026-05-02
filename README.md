@@ -25,8 +25,9 @@ Everything you can do from your shell:
 
 ```bash
 # ── Setup ────────────────────────────────────────────────────────────────────
+kern register                                    # Create account, save API key automatically
 kern init                                        # Inject shell hooks + open dashboard
-kern config --endpoint <url> --key <key>         # Set API endpoint and API key
+kern config --endpoint <url> --key <key>         # Set API endpoint and API key manually
 kern config --dev-id <id>                        # Set your developer ID
 kern config                                      # Print current config
 
@@ -147,34 +148,24 @@ Dashboard / Standups / Team      (React Query, SSE streaming)
 ### 1. Install the CLI agent
 
 ```bash
-npm install -g @kern/agent
+npm install -g kern-agent
 ```
 
-### 2. Initialize shell integration
+### 2. Register and get your API key
+
+```bash
+kern register
+```
+
+Prompts for your name, email, and the KERN API endpoint. Creates your account and saves the API key to `~/.kern/config.json` automatically — no copy-paste required.
+
+### 3. Initialize shell integration
 
 ```bash
 kern init
 ```
 
 Detects your shell (zsh, bash, or fish), injects the capture hook into the appropriate config file, and opens the dashboard automatically. After restarting your shell, every command you run is silently captured.
-
-### 3. Configure the API endpoint and key
-
-```bash
-kern config --endpoint https://your-kern-instance.replit.app/api --key YOUR_API_KEY
-```
-
-Your API key is shown in the dashboard under **Settings → CLI API Key**.
-
-Or edit `~/.kern/config.json` directly:
-
-```json
-{
-  "api_endpoint": "https://your-kern-instance.replit.app/api",
-  "api_key": "your-api-key-here",
-  "developer_id": 1
-}
-```
 
 ### 4. Start the daemon
 
@@ -196,6 +187,7 @@ kern dashboard
 
 | Command | Description |
 |---|---|
+| `kern register` | Create a KERN account, save API key automatically |
 | `kern init` | Detect shell, inject hooks, open dashboard in browser |
 | `kern dashboard` | Open the KERN dashboard in your browser |
 | `kern config` | Print current configuration |
