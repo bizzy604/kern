@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetTodayStandup,
@@ -11,9 +11,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Edit2, Check, X, Send, Clock, Bot, User } from "lucide-react";
+import { Edit2, Check, X, Send, Clock, Bot, User, Sparkles, RefreshCw } from "lucide-react";
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + "T12:00:00");
@@ -32,11 +31,64 @@ function SourceBadge({ source }: { source: string }) {
   );
 }
 
+function useGenerateStandup(onChunk: (text: string) => void, onDone: () => void) {
+  const [generating, setGenerating] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const generate = async () => {
+    if (generating) return;
+    abortRef.current = new AbortController();
+    setGenerating(true);
+    onChunk(""); // reset
+
+    try {
+      const res = await fetch("/api/standups/generate", {
+        method: "POST",
+        signal: abortRef.current.signal,
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!res.ok || !res.body) throw new Error("Generation failed");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const json = JSON.parse(line.slice(6));
+            if (json.content) onChunk(json.content);
+            if (json.done) { onDone(); return; }
+            if (json.error) throw new Error(json.error);
+          } catch (_) {}
+        }
+      }
+      onDone();
+    } catch (err: any) {
+      if (err.name !== "AbortError") throw err;
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return { generate, generating };
+}
+
 function TodayStandup() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
+  const [streamedContent, setStreamedContent] = useState("");
 
   const { data: todayData, isLoading } = useGetTodayStandup({
     query: { queryKey: getGetTodayStandupQueryKey() },
@@ -65,7 +117,25 @@ function TodayStandup() {
     },
   });
 
+  const { generate, generating } = useGenerateStandup(
+    (chunk) => setStreamedContent(prev => chunk === "" ? "" : prev + chunk),
+    () => {
+      queryClient.invalidateQueries({ queryKey: getGetTodayStandupQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getListStandupsQueryKey() });
+      setStreamedContent("");
+      toast({ title: "Standup generated", description: "Claude wrote your standup from today's activity." });
+    },
+  );
+
   const standup = todayData?.standup;
+
+  const handleGenerate = async () => {
+    try {
+      await generate();
+    } catch {
+      toast({ title: "Generation failed", description: "Could not reach the AI. Try again.", variant: "destructive" });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -77,13 +147,53 @@ function TodayStandup() {
     );
   }
 
+  // Show streaming state
+  if (generating || streamedContent) {
+    return (
+      <div className="rounded-lg border border-accent/30 bg-card p-6 space-y-4" data-testid="standup-generating">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono border border-accent/30 text-accent bg-accent/10">
+            <Bot className="h-3 w-3" />
+            {generating ? "Generating…" : "AI"}
+          </span>
+          {generating && (
+            <span className="flex gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: "0ms" }} />
+              <span className="h-1.5 w-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: "150ms" }} />
+              <span className="h-1.5 w-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: "300ms" }} />
+            </span>
+          )}
+        </div>
+        <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap min-h-[80px] font-mono">
+          {streamedContent}
+          {generating && <span className="inline-block w-0.5 h-4 bg-accent ml-0.5 animate-pulse align-text-bottom" />}
+        </div>
+      </div>
+    );
+  }
+
   if (!standup) {
     return (
-      <div className="rounded-lg border border-border bg-card p-6 flex flex-col items-center justify-center gap-3 min-h-[160px]" data-testid="standup-empty-today">
-        <Clock className="h-8 w-8 text-muted-foreground opacity-40" />
-        <div className="text-center">
-          <p className="text-sm font-medium text-foreground">No standup yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Your standup is generated at 8:55 AM local time based on yesterday's sessions.</p>
+      <div className="rounded-lg border border-border bg-card p-6 space-y-5" data-testid="standup-empty-today">
+        <div className="flex flex-col items-center justify-center gap-4 py-6">
+          <div className="h-12 w-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
+            <Sparkles className="h-6 w-6 text-accent" />
+          </div>
+          <div className="text-center space-y-1">
+            <p className="text-sm font-semibold text-foreground">No standup yet today</p>
+            <p className="text-xs text-muted-foreground max-w-xs">
+              Click Generate and Claude will write your standup from your recent sessions and commits — takes about 5 seconds.
+            </p>
+          </div>
+          <Button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="bg-accent hover:bg-accent/90 text-background font-mono"
+            data-testid="button-generate-standup"
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            Generate with Claude
+          </Button>
         </div>
       </div>
     );
@@ -118,6 +228,17 @@ function TodayStandup() {
         </div>
         {!editing && (
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleGenerate}
+              disabled={generating}
+              className="h-8 text-xs text-muted-foreground"
+              data-testid="button-regenerate-standup"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Regenerate
+            </Button>
             <Button variant="ghost" size="sm" onClick={handleEdit} className="h-8 text-xs" data-testid="button-edit-standup">
               <Edit2 className="h-3 w-3 mr-1" /> Edit
             </Button>
@@ -130,7 +251,7 @@ function TodayStandup() {
                 data-testid="button-post-slack"
               >
                 <Send className="h-3 w-3 mr-1" />
-                {postToSlack.isPending ? "Posting..." : "Post to Slack"}
+                {postToSlack.isPending ? "Posting…" : "Post to Slack"}
               </Button>
             )}
           </div>
@@ -142,13 +263,13 @@ function TodayStandup() {
           <Textarea
             value={editContent}
             onChange={e => setEditContent(e.target.value)}
-            className="min-h-[120px] text-sm font-mono bg-background border-border text-foreground resize-none"
+            className="min-h-[140px] text-sm font-mono bg-background border-border text-foreground resize-none"
             data-testid="textarea-standup-edit"
           />
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={handleSave} disabled={updateStandup.isPending} className="h-8 text-xs bg-accent hover:bg-accent/90 text-background" data-testid="button-save-standup">
               <Check className="h-3 w-3 mr-1" />
-              {updateStandup.isPending ? "Saving..." : "Save"}
+              {updateStandup.isPending ? "Saving…" : "Save"}
             </Button>
             <Button variant="ghost" size="sm" onClick={handleCancel} className="h-8 text-xs" data-testid="button-cancel-edit">
               <X className="h-3 w-3 mr-1" /> Cancel
@@ -171,7 +292,6 @@ export default function Standups() {
   );
 
   const standups = standupsData?.standups ?? [];
-  // Past standups (skip today)
   const today = new Date().toISOString().split("T")[0];
   const pastStandups = standups.filter(s => s.date !== today);
 
@@ -179,14 +299,16 @@ export default function Standups() {
     <div className="space-y-8" data-testid="page-standups">
       <div>
         <h1 className="text-2xl font-bold font-mono text-foreground">Standups</h1>
-        <p className="text-sm text-muted-foreground mt-1">AI-generated daily summaries from your terminal activity</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Claude reads your sessions &amp; commits and writes your standup — edit and post to Slack when ready
+        </p>
       </div>
 
       <TodayStandup />
 
       {/* History */}
       <div className="space-y-4">
-        <h2 className="text-sm font-semibold text-foreground text-muted-foreground uppercase tracking-widest font-mono text-xs">History</h2>
+        <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">History</h2>
         {isLoading ? (
           Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-lg" />)
         ) : pastStandups.length === 0 ? (
