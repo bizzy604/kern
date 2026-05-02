@@ -1,0 +1,26 @@
+#!/usr/bin/env node
+/**
+ * kern — launcher shim
+ *
+ * Calls the platform-native binary downloaded by postinstall.
+ * This file is always a JS script so it works as an npm bin entry on all OSes.
+ */
+"use strict";
+const path = require("path");
+const { spawnSync } = require("child_process");
+const fs = require("fs");
+
+const dir = __dirname;
+const isWin = process.platform === "win32";
+const native = path.join(dir, isWin ? "kern-native.exe" : "kern-native");
+
+if (!fs.existsSync(native)) {
+  process.stderr.write(
+    "\n  [kern] Binary not found at " + native + "\n" +
+    "  Re-run postinstall:  npm install kern-agent\n\n"
+  );
+  process.exit(1);
+}
+
+const result = spawnSync(native, process.argv.slice(2), { stdio: "inherit" });
+process.exit(result.status ?? 1);
