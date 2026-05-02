@@ -66,7 +66,24 @@ func (d *DB) migrate() error {
                         created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
                 );
                 CREATE INDEX IF NOT EXISTS idx_events_synced ON events(synced);
-                CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_time);
+                CREATE INDEX IF NOT EXISTS idx_events_start  ON events(start_time);
+
+                CREATE TABLE IF NOT EXISTS git_events (
+                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                        event_id      INTEGER REFERENCES events(id),
+                        hash          TEXT    NOT NULL,
+                        short_hash    TEXT    NOT NULL,
+                        branch        TEXT    NOT NULL DEFAULT '',
+                        message       TEXT    NOT NULL DEFAULT '',
+                        author        TEXT    NOT NULL DEFAULT '',
+                        files_changed INTEGER NOT NULL DEFAULT 0,
+                        insertions    INTEGER NOT NULL DEFAULT 0,
+                        deletions     INTEGER NOT NULL DEFAULT 0,
+                        project       TEXT    NOT NULL DEFAULT '',
+                        synced        INTEGER NOT NULL DEFAULT 0,
+                        created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_git_synced ON git_events(synced);
         `)
         return err
 }
@@ -195,6 +212,85 @@ func (d *DB) RecentEvents(n int) ([]*Event, error) {
                 events = append(events, e)
         }
         return events, rows.Err()
+}
+
+// GitEvent represents a captured git commit stored locally.
+type GitEvent struct {
+        ID           int64
+        EventID      int64
+        Hash         string
+        ShortHash    string
+        Branch       string
+        Message      string
+        Author       string
+        FilesChanged int
+        Insertions   int
+        Deletions    int
+        Project      string
+        Synced       bool
+        CreatedAt    time.Time
+}
+
+// InsertGitEvent stores a git commit linked to an event row.
+func (d *DB) InsertGitEvent(eventID int64, hash, shortHash, branch, message, author string, files, ins, del int, project string) error {
+        _, err := d.conn.Exec(`
+                INSERT OR IGNORE INTO git_events
+                        (event_id, hash, short_hash, branch, message, author, files_changed, insertions, deletions, project)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                eventID, hash, shortHash, branch, message, author, files, ins, del, project,
+        )
+        return err
+}
+
+// UnsyncedGitEvents returns git events not yet pushed to the API.
+func (d *DB) UnsyncedGitEvents(limit int) ([]*GitEvent, error) {
+        rows, err := d.conn.Query(`
+                SELECT id, event_id, hash, short_hash, branch, message, author,
+                       files_changed, insertions, deletions, project, created_at
+                FROM git_events WHERE synced = 0
+                ORDER BY created_at ASC LIMIT ?`, limit)
+        if err != nil {
+                return nil, err
+        }
+        defer rows.Close()
+        var events []*GitEvent
+        for rows.Next() {
+                g := &GitEvent{}
+                var createdAt int64
+                if err := rows.Scan(&g.ID, &g.EventID, &g.Hash, &g.ShortHash,
+                        &g.Branch, &g.Message, &g.Author,
+                        &g.FilesChanged, &g.Insertions, &g.Deletions,
+                        &g.Project, &createdAt); err != nil {
+                        return nil, err
+                }
+                g.CreatedAt = time.Unix(createdAt, 0)
+                events = append(events, g)
+        }
+        return events, rows.Err()
+}
+
+// MarkGitSynced marks git event IDs as synced.
+func (d *DB) MarkGitSynced(ids []int64) error {
+        if len(ids) == 0 {
+                return nil
+        }
+        tx, err := d.conn.Begin()
+        if err != nil {
+                return err
+        }
+        stmt, err := tx.Prepare(`UPDATE git_events SET synced = 1 WHERE id = ?`)
+        if err != nil {
+                tx.Rollback()
+                return err
+        }
+        defer stmt.Close()
+        for _, id := range ids {
+                if _, err := stmt.Exec(id); err != nil {
+                        tx.Rollback()
+                        return err
+                }
+        }
+        return tx.Commit()
 }
 
 // Prune deletes synced events older than the given duration.

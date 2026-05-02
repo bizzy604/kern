@@ -5,6 +5,7 @@ import sessionsRouter from "./sessions";
 import standupsRouter from "./standups";
 import dashboardRouter from "./dashboard";
 import teamRouter from "./team";
+import gitRouter from "./git";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(sessionsRouter);
 router.use(standupsRouter);
 router.use(dashboardRouter);
 router.use(teamRouter);
+router.use(gitRouter);
 
 export default router;

@@ -49,17 +49,35 @@ export const standupsTable = pgTable("standups", {
   generatedAt: timestamp("generated_at").defaultNow().notNull(),
 });
 
+export const gitCommitsTable = pgTable("git_commits", {
+  id: serial("id").primaryKey(),
+  developerId: integer("developer_id").notNull().references(() => developersTable.id),
+  hash: text("hash").notNull().unique(),
+  shortHash: text("short_hash").notNull(),
+  branch: text("branch").notNull().default(""),
+  message: text("message").notNull().default(""),
+  author: text("author").notNull().default(""),
+  filesChanged: integer("files_changed").notNull().default(0),
+  insertions: integer("insertions").notNull().default(0),
+  deletions: integer("deletions").notNull().default(0),
+  project: text("project").notNull().default(""),
+  committedAt: timestamp("committed_at").defaultNow().notNull(),
+});
+
 export const insertTeamSchema = createInsertSchema(teamsTable).omit({ id: true, createdAt: true });
 export const insertDeveloperSchema = createInsertSchema(developersTable).omit({ id: true, createdAt: true });
 export const insertWorkSessionSchema = createInsertSchema(workSessionsTable).omit({ id: true });
 export const insertStandupSchema = createInsertSchema(standupsTable).omit({ id: true, generatedAt: true });
+export const insertGitCommitSchema = createInsertSchema(gitCommitsTable).omit({ id: true });
 
 export type Team = typeof teamsTable.$inferSelect;
 export type Developer = typeof developersTable.$inferSelect;
 export type WorkSession = typeof workSessionsTable.$inferSelect;
 export type Standup = typeof standupsTable.$inferSelect;
+export type GitCommit = typeof gitCommitsTable.$inferSelect;
 
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
 export type InsertDeveloper = z.infer<typeof insertDeveloperSchema>;
 export type InsertWorkSession = z.infer<typeof insertWorkSessionSchema>;
 export type InsertStandup = z.infer<typeof insertStandupSchema>;
+export type InsertGitCommit = z.infer<typeof insertGitCommitSchema>;

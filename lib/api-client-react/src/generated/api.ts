@@ -22,7 +22,9 @@ import type {
   Developer,
   Error,
   GetActivityBreakdownParams,
+  GitCommitList,
   HealthStatus,
+  ListGitCommitsParams,
   ListSessionsParams,
   ListStandupsParams,
   SessionList,
@@ -1111,6 +1113,100 @@ export function useGetTeamSnapshot<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetTeamSnapshotQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List git commits for the current developer
+ */
+export const getListGitCommitsUrl = (params?: ListGitCommitsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/git/commits?${stringifiedParams}`
+    : `/api/git/commits`;
+};
+
+export const listGitCommits = async (
+  params?: ListGitCommitsParams,
+  options?: RequestInit,
+): Promise<GitCommitList> => {
+  return customFetch<GitCommitList>(getListGitCommitsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListGitCommitsQueryKey = (params?: ListGitCommitsParams) => {
+  return [`/api/git/commits`, ...(params ? [params] : [])] as const;
+};
+
+export const getListGitCommitsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listGitCommits>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListGitCommitsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listGitCommits>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListGitCommitsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listGitCommits>>> = ({
+    signal,
+  }) => listGitCommits(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listGitCommits>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListGitCommitsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listGitCommits>>
+>;
+export type ListGitCommitsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List git commits for the current developer
+ */
+
+export function useListGitCommits<
+  TData = Awaited<ReturnType<typeof listGitCommits>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListGitCommitsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listGitCommits>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListGitCommitsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -339,3 +339,38 @@ export const GetTeamSnapshotResponse = zod.object({
   ),
   cachedAt: zod.string(),
 });
+
+/**
+ * @summary List git commits for the current developer
+ */
+export const ListGitCommitsQueryParams = zod.object({
+  limit: zod.coerce.number().optional(),
+  offset: zod.coerce.number().optional(),
+  days: zod.coerce.number().optional(),
+});
+
+export const ListGitCommitsResponse = zod.object({
+  commits: zod.array(
+    zod.object({
+      id: zod.number(),
+      developerId: zod.number(),
+      hash: zod.string(),
+      shortHash: zod.string(),
+      branch: zod.string(),
+      message: zod.string(),
+      author: zod.string(),
+      filesChanged: zod.number(),
+      insertions: zod.number(),
+      deletions: zod.number(),
+      project: zod.string(),
+      committedAt: zod.string(),
+    }),
+  ),
+  total: zod.number(),
+  stats: zod.object({
+    totalCommits: zod.number(),
+    totalFilesChanged: zod.number(),
+    totalInsertions: zod.number(),
+    totalDeletions: zod.number(),
+  }),
+});

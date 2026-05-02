@@ -219,6 +219,34 @@ export interface TeamSnapshot {
   cachedAt: string;
 }
 
+export interface GitCommit {
+  id: number;
+  developerId: number;
+  hash: string;
+  shortHash: string;
+  branch: string;
+  message: string;
+  author: string;
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+  project: string;
+  committedAt: string;
+}
+
+export interface GitStats {
+  totalCommits: number;
+  totalFilesChanged: number;
+  totalInsertions: number;
+  totalDeletions: number;
+}
+
+export interface GitCommitList {
+  commits: GitCommit[];
+  total: number;
+  stats: GitStats;
+}
+
 export type GetActivityBreakdownParams = {
   days?: number;
 };
@@ -235,4 +263,10 @@ export type ListSessionsParams = {
 export type ListStandupsParams = {
   limit?: number;
   offset?: number;
+};
+
+export type ListGitCommitsParams = {
+  limit?: number;
+  offset?: number;
+  days?: number;
 };

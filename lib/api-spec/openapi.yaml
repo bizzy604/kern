@@ -20,6 +20,8 @@ tags:
     description: Team operations
   - name: dashboard
     description: Dashboard summary operations
+  - name: git
+    description: Git commit tracking
 paths:
   /healthz:
     get:
@@ -262,6 +264,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TeamSnapshot"
+
+  /git/commits:
+    get:
+      operationId: listGitCommits
+      tags: [git]
+      summary: List git commits for the current developer
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: offset
+          schema:
+            type: integer
+        - in: query
+          name: days
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of git commits with stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitCommitList"
 
 components:
   schemas:
@@ -583,3 +611,58 @@ components:
         contributorCount:
           type: integer
       required: [project, totalMinutes, contributorCount]
+
+    GitCommit:
+      type: object
+      properties:
+        id:
+          type: integer
+        developerId:
+          type: integer
+        hash:
+          type: string
+        shortHash:
+          type: string
+        branch:
+          type: string
+        message:
+          type: string
+        author:
+          type: string
+        filesChanged:
+          type: integer
+        insertions:
+          type: integer
+        deletions:
+          type: integer
+        project:
+          type: string
+        committedAt:
+          type: string
+      required: [id, developerId, hash, shortHash, branch, message, author, filesChanged, insertions, deletions, project, committedAt]
+
+    GitStats:
+      type: object
+      properties:
+        totalCommits:
+          type: integer
+        totalFilesChanged:
+          type: integer
+        totalInsertions:
+          type: integer
+        totalDeletions:
+          type: integer
+      required: [totalCommits, totalFilesChanged, totalInsertions, totalDeletions]
+
+    GitCommitList:
+      type: object
+      properties:
+        commits:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitCommit"
+        total:
+          type: integer
+        stats:
+          $ref: "#/components/schemas/GitStats"
+      required: [commits, total, stats]
