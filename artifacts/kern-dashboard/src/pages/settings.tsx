@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Check, X, Github, Slack, Terminal, Shield, Bell, Key,
   Copy, Eye, EyeOff, ExternalLink, Loader2, Unplug, Plug, Pencil,
+  Users, RefreshCw,
 } from "lucide-react";
 import { SiJira, SiAsana } from "react-icons/si";
 
@@ -38,7 +39,7 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
-/* ─── API key card ─────────────────────────────────────────────── */
+/* ─── Copy row ─────────────────────────────────────────────────── */
 
 function CopyRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
   const { toast } = useToast();
@@ -61,6 +62,140 @@ function CopyRow({ label, value, hint }: { label: string; value: string; hint?: 
   );
 }
 
+/* ─── Invite teammates card ────────────────────────────────────── */
+
+interface InviteData {
+  inviteCode: string | null;
+  teamName: string | null;
+  teamId: number | null;
+  solo?: boolean;
+}
+
+function InviteCard() {
+  const { toast } = useToast();
+  const [data, setData] = useState<InviteData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
+  const endpoint = `${window.location.origin}/api`;
+
+  const fetchCode = useCallback(() => {
+    setLoading(true);
+    fetch("/api/teams/invite-code", { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setData(d))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { fetchCode(); }, [fetchCode]);
+
+  const regenerate = async () => {
+    setRegenerating(true);
+    try {
+      const res = await fetch("/api/teams/regenerate-invite", { method: "POST", credentials: "include" });
+      if (res.ok) {
+        const d = await res.json();
+        setData(prev => prev ? { ...prev, inviteCode: d.inviteCode } : prev);
+        toast({ title: "Invite code regenerated", description: "The old code is now invalid. Share the new command below." });
+      }
+    } catch {
+      toast({ title: "Error", description: "Could not regenerate code.", variant: "destructive" });
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const inviteCode = data?.inviteCode ?? null;
+  const teamName = data?.teamName ?? null;
+  const registerCmd = inviteCode
+    ? `kern register --endpoint ${endpoint} --team-code ${inviteCode}`
+    : `kern register --endpoint ${endpoint}`;
+
+  return (
+    <div className="rounded-lg border border-accent/20 bg-card p-6 space-y-5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Users className="h-4 w-4 text-accent" />
+          <h2 className="text-sm font-semibold text-foreground">Invite Teammates</h2>
+        </div>
+        {inviteCode && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground border border-border"
+            onClick={regenerate} disabled={regenerating}>
+            {regenerating
+              ? <><Loader2 className="h-3 w-3 animate-spin" />Regenerating…</>
+              : <><RefreshCw className="h-3 w-3" />New code</>}
+          </Button>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+      ) : data?.solo ? (
+        <p className="text-xs text-muted-foreground">
+          You are not currently in a team. Contact your admin or register a team in the database to enable team invites.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {teamName && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Team</span>
+              <span className="text-xs font-mono text-foreground bg-accent/10 border border-accent/20 px-2 py-0.5 rounded">{teamName}</span>
+            </div>
+          )}
+
+          {/* Invite code display */}
+          {inviteCode && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Team Invite Code</span>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 flex items-center justify-center rounded-md bg-muted/20 border border-accent/20 py-3">
+                  <span className="text-2xl font-mono font-bold text-accent tracking-[0.3em]">{inviteCode}</span>
+                </div>
+                <Button variant="ghost" size="sm" className="h-12 w-12 p-0 flex-shrink-0"
+                  onClick={() => { navigator.clipboard.writeText(inviteCode); toast({ title: "Code copied" }); }}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Ready-to-share command */}
+          <div className="space-y-2">
+            <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Share this command with teammates</p>
+            <div className="flex items-center gap-2">
+              <pre className="flex-1 text-xs font-mono text-foreground bg-muted/30 border border-border rounded px-3 py-2 overflow-x-auto whitespace-nowrap select-all">
+                {registerCmd}
+              </pre>
+              <Button variant="ghost" size="sm" className="h-9 w-9 p-0 flex-shrink-0"
+                onClick={() => { navigator.clipboard.writeText(registerCmd); toast({ title: "Command copied", description: "Send this to your teammate." }); }}>
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* How it works */}
+          <div className="rounded-md bg-muted/10 border border-border px-4 py-3 space-y-2">
+            <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest">How it works</p>
+            <ol className="space-y-1.5 text-xs text-muted-foreground">
+              <li><span className="text-foreground font-mono">1.</span> Teammate installs: <code className="bg-muted/40 px-1 rounded font-mono">npm install -g kern-agent</code></li>
+              <li><span className="text-foreground font-mono">2.</span> They run the command above — it creates their account and joins <span className="text-foreground">{teamName ?? "your team"}</span> automatically</li>
+              <li><span className="text-foreground font-mono">3.</span> They run <code className="bg-muted/40 px-1 rounded font-mono">kern init</code> to start tracking — their data appears on the Team page</li>
+            </ol>
+          </div>
+
+          {inviteCode && (
+            <p className="text-xs text-muted-foreground">
+              Anyone with this code can join your team. Click <span className="text-foreground font-mono">New code</span> above to invalidate the current one.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── API key card ─────────────────────────────────────────────── */
+
 function ApiKeyCard() {
   const { toast } = useToast();
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -70,7 +205,7 @@ function ApiKeyCard() {
   useEffect(() => {
     const stored = sessionStorage.getItem("kern_api_key");
     if (stored) { setApiKey(stored); setLoading(false); return; }
-    fetch("/api/developers/me/apikey-local")
+    fetch("/api/developers/me/apikey-local", { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.apiKey) { setApiKey(d.apiKey); sessionStorage.setItem("kern_api_key", d.apiKey); } })
       .catch(() => {})
@@ -87,27 +222,6 @@ function ApiKeyCard() {
         <h2 className="text-sm font-semibold text-foreground">CLI Setup</h2>
       </div>
 
-      {/* Step 1 — register */}
-      <div className="rounded-md bg-muted/10 border border-border p-4 space-y-3">
-        <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Step 1 — register a new machine</p>
-        <p className="text-xs text-muted-foreground">
-          Share your <span className="text-foreground font-medium">API Endpoint</span> with any developer joining your team.
-          They run <code className="font-mono bg-muted/40 px-1 rounded">kern register</code> and paste it when prompted.
-        </p>
-        <CopyRow label="API Endpoint" value={endpoint} hint="paste this when kern register asks for the endpoint" />
-        <div className="rounded-md bg-muted/20 border border-border px-3 py-2">
-          <p className="text-xs font-mono text-muted-foreground mb-1.5">Run on the developer's machine:</p>
-          <div className="flex items-center gap-2">
-            <pre className="flex-1 text-xs font-mono text-foreground select-all">{`kern register --endpoint ${endpoint}`}</pre>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 flex-shrink-0"
-              onClick={() => { navigator.clipboard.writeText(`kern register --endpoint ${endpoint}`); toast({ title: "Copied", description: "Command copied." }); }}>
-              <Copy className="h-3 w-3" />
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Step 2 — your own API key */}
       <div className="space-y-3">
         <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Your API Key</p>
         <p className="text-xs text-muted-foreground">
@@ -153,7 +267,7 @@ function useIntegrations() {
 
   const refetch = useCallback(() => {
     setLoading(true);
-    fetch("/api/integrations")
+    fetch("/api/integrations", { credentials: "include" })
       .then(r => r.ok ? r.json() : { integrations: [] })
       .then(d => setIntegrations(d.integrations ?? []))
       .catch(() => {})
@@ -185,6 +299,7 @@ function SlackCard({ status, onRefetch }: { status: IntegrationStatus | undefine
       const res = await fetch("/api/integrations/slack", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ webhookUrl: webhookUrl.trim(), channelName: channelName.trim() || undefined }),
       });
       const data = await res.json();
@@ -207,7 +322,7 @@ function SlackCard({ status, onRefetch }: { status: IntegrationStatus | undefine
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
-      await fetch("/api/integrations/slack", { method: "DELETE" });
+      await fetch("/api/integrations/slack", { method: "DELETE", credentials: "include" });
       toast({ title: "Slack disconnected" });
       onRefetch();
     } catch {
@@ -257,7 +372,6 @@ function SlackCard({ status, onRefetch }: { status: IntegrationStatus | undefine
         </div>
       </div>
 
-      {/* Inline connect form */}
       {open && !connected && (
         <div className="border-t border-border px-4 pb-4 pt-3 space-y-3">
           <div className="space-y-1.5">
@@ -384,12 +498,7 @@ function ProfileCard({ me, isLoading }: ProfileCardProps) {
 
   const startEdit = () => {
     if (!me) return;
-    setForm({
-      name: me.name ?? "",
-      email: me.email ?? "",
-      githubHandle: me.githubHandle ?? "",
-      timezone: me.timezone ?? "UTC",
-    });
+    setForm({ name: me.name ?? "", email: me.email ?? "", githubHandle: me.githubHandle ?? "", timezone: me.timezone ?? "UTC" });
     setEditing(true);
   };
 
@@ -399,12 +508,8 @@ function ProfileCard({ me, isLoading }: ProfileCardProps) {
       const res = await fetch("/api/developers/me", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name,
-          email: form.email,
-          githubHandle: form.githubHandle,
-          timezone: form.timezone,
-        }),
+        credentials: "include",
+        body: JSON.stringify({ name: form.name, email: form.email, githubHandle: form.githubHandle, timezone: form.timezone }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -505,16 +610,15 @@ export default function Settings() {
     <div className="space-y-8 max-w-2xl" data-testid="page-settings">
       <div>
         <h1 className="text-2xl font-bold font-mono text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-1">Profile, API key, and integrations</p>
+        <p className="text-sm text-muted-foreground mt-1">Profile, team, and integrations</p>
       </div>
 
-      {/* Profile */}
       <ProfileCard me={me} isLoading={isLoading} />
 
-      {/* API Key */}
+      <InviteCard />
+
       <ApiKeyCard />
 
-      {/* Integrations */}
       <div className="space-y-3">
         <div className="flex items-center gap-3">
           <Shield className="h-4 w-4 text-accent" />
@@ -523,14 +627,11 @@ export default function Settings() {
         <p className="text-xs text-muted-foreground">
           Connect external tools to automatically sync work sessions and post standups.
         </p>
-
         {intLoading ? (
           <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[72px] rounded-lg" />)}</div>
         ) : (
           <div className="space-y-2">
-            {/* Slack — full connect flow */}
             <SlackCard status={getStatus("slack")} onRefetch={refetch} />
-            {/* GitHub, Jira, Asana */}
             {GENERIC_INTEGRATIONS.map(meta => (
               <GenericIntegrationCard key={meta.type} meta={meta} status={getStatus(meta.type)} />
             ))}
@@ -538,7 +639,6 @@ export default function Settings() {
         )}
       </div>
 
-      {/* Notifications */}
       <div className="rounded-lg border border-border bg-card p-6 space-y-4">
         <div className="flex items-center gap-3">
           <Bell className="h-4 w-4 text-accent" />
@@ -561,7 +661,6 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Terminal plugin */}
       <div className="rounded-lg border border-border bg-card p-6 space-y-4">
         <div className="flex items-center gap-3">
           <Terminal className="h-4 w-4 text-accent" />

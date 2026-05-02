@@ -204,6 +204,7 @@ type RegisterRequest struct {
         Email        string `json:"email"`
         GithubHandle string `json:"githubHandle,omitempty"`
         Timezone     string `json:"timezone,omitempty"`
+        TeamCode     string `json:"teamCode,omitempty"`
 }
 
 // RegisterResult is the response from the register endpoint.
@@ -215,6 +216,7 @@ type RegisterResult struct {
         Role         string `json:"role"`
         Timezone     string `json:"timezone"`
         APIKey       string `json:"apiKey"`
+        TeamName     string `json:"teamName"`
 }
 
 // Register creates a new developer account and returns the API key.

@@ -9,6 +9,7 @@ export const standupSourceEnum = pgEnum("standup_source", ["AI", "MANUAL"]);
 export const teamsTable = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  inviteCode: text("invite_code").unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
