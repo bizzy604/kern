@@ -40,6 +40,27 @@ function RoleBadge({ role }: { role: string }) {
 
 /* ─── API key card ─────────────────────────────────────────────── */
 
+function CopyRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  const { toast } = useToast();
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">{label}</span>
+        {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
+      </div>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 text-xs font-mono bg-muted/30 border border-border rounded px-3 py-2 text-foreground overflow-hidden text-ellipsis whitespace-nowrap">
+          {value}
+        </code>
+        <Button variant="ghost" size="sm" className="h-9 w-9 p-0 flex-shrink-0"
+          onClick={() => { navigator.clipboard.writeText(value); toast({ title: "Copied", description: `${label} copied to clipboard.` }); }}>
+          <Copy className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ApiKeyCard() {
   const { toast } = useToast();
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -57,36 +78,62 @@ function ApiKeyCard() {
   }, []);
 
   const masked = apiKey ? `${apiKey.slice(0, 8)}${"•".repeat(24)}${apiKey.slice(-8)}` : null;
+  const endpoint = `${window.location.origin}/api`;
 
   return (
-    <div className="rounded-lg border border-border bg-card p-6 space-y-4">
+    <div className="rounded-lg border border-border bg-card p-6 space-y-5">
       <div className="flex items-center gap-3">
         <Key className="h-4 w-4 text-accent" />
-        <h2 className="text-sm font-semibold text-foreground">CLI API Key</h2>
+        <h2 className="text-sm font-semibold text-foreground">CLI Setup</h2>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Authenticates the <code className="font-mono bg-muted/40 px-1 rounded">kern</code> agent when syncing sessions. Treat it like a password.
-      </p>
-      {loading ? <Skeleton className="h-9 w-full" /> : apiKey ? (
-        <div className="space-y-3">
+
+      {/* Step 1 — register */}
+      <div className="rounded-md bg-muted/10 border border-border p-4 space-y-3">
+        <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Step 1 — register a new machine</p>
+        <p className="text-xs text-muted-foreground">
+          Share your <span className="text-foreground font-medium">API Endpoint</span> with any developer joining your team.
+          They run <code className="font-mono bg-muted/40 px-1 rounded">kern register</code> and paste it when prompted.
+        </p>
+        <CopyRow label="API Endpoint" value={endpoint} hint="paste this when kern register asks for the endpoint" />
+        <div className="rounded-md bg-muted/20 border border-border px-3 py-2">
+          <p className="text-xs font-mono text-muted-foreground mb-1.5">Run on the developer's machine:</p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 text-xs font-mono bg-muted/30 border border-border rounded px-3 py-2 text-foreground overflow-hidden text-ellipsis whitespace-nowrap">
-              {revealed ? apiKey : masked}
-            </code>
-            <Button variant="ghost" size="sm" className="h-9 w-9 p-0 flex-shrink-0" onClick={() => setRevealed(v => !v)}>
-              {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            <pre className="flex-1 text-xs font-mono text-foreground select-all">{`kern register --endpoint ${endpoint}`}</pre>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 flex-shrink-0"
+              onClick={() => { navigator.clipboard.writeText(`kern register --endpoint ${endpoint}`); toast({ title: "Copied", description: "Command copied." }); }}>
+              <Copy className="h-3 w-3" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-9 w-9 p-0 flex-shrink-0"
-              onClick={() => { navigator.clipboard.writeText(apiKey); toast({ title: "Copied", description: "API key copied to clipboard." }); }}>
-              <Copy className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="rounded-md bg-muted/20 border border-border p-3">
-            <p className="text-xs text-muted-foreground font-mono mb-2">Add to <code className="bg-muted/40 px-1 rounded">~/.kern/config.json</code>:</p>
-            <pre className="text-xs font-mono text-foreground whitespace-pre-wrap select-all">{`{\n  "api_endpoint": "${window.location.origin}/api",\n  "api_key": "${revealed ? apiKey : masked}"\n}`}</pre>
           </div>
         </div>
-      ) : <p className="text-xs text-muted-foreground italic">API key not available</p>}
+      </div>
+
+      {/* Step 2 — your own API key */}
+      <div className="space-y-3">
+        <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Your API Key</p>
+        <p className="text-xs text-muted-foreground">
+          Authenticates the <code className="font-mono bg-muted/40 px-1 rounded">kern</code> agent when syncing sessions. Treat it like a password.
+        </p>
+        {loading ? <Skeleton className="h-9 w-full" /> : apiKey ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs font-mono bg-muted/30 border border-border rounded px-3 py-2 text-foreground overflow-hidden text-ellipsis whitespace-nowrap">
+                {revealed ? apiKey : masked}
+              </code>
+              <Button variant="ghost" size="sm" className="h-9 w-9 p-0 flex-shrink-0" onClick={() => setRevealed(v => !v)}>
+                {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+              <Button variant="ghost" size="sm" className="h-9 w-9 p-0 flex-shrink-0"
+                onClick={() => { navigator.clipboard.writeText(apiKey); toast({ title: "Copied", description: "API key copied to clipboard." }); }}>
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="rounded-md bg-muted/20 border border-border p-3">
+              <p className="text-xs text-muted-foreground font-mono mb-2">Or configure manually in <code className="bg-muted/40 px-1 rounded">~/.kern/config.json</code>:</p>
+              <pre className="text-xs font-mono text-foreground whitespace-pre-wrap select-all">{`{\n  "api_endpoint": "${endpoint}",\n  "api_key": "${revealed ? apiKey : masked}"\n}`}</pre>
+            </div>
+          </div>
+        ) : <p className="text-xs text-muted-foreground italic">API key not available</p>}
+      </div>
     </div>
   );
 }

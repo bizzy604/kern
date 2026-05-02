@@ -42,6 +42,7 @@ func runRegister(cmd *cobra.Command, args []string) error {
         dim := color.New(color.Faint)
         green := color.New(color.FgGreen)
         cyan := color.New(color.FgCyan)
+        yellow := color.New(color.FgYellow)
 
         fmt.Println()
         bold.Println("  KERN_ register")
@@ -52,7 +53,17 @@ func runRegister(cmd *cobra.Command, args []string) error {
 
         endpoint := registerEndpoint
         if endpoint == "" {
-                endpoint = prompt(reader, "  API endpoint", "https://kern.dev/api")
+                fmt.Println()
+                yellow.Println("  ℹ  Where to find your API endpoint:")
+                dim.Println("     Open your KERN dashboard → Settings → CLI Setup")
+                dim.Println("     Copy the \"API Endpoint\" value shown there, e.g.")
+                dim.Println("     https://your-kern-instance.replit.app/api")
+                dim.Println("     Or your admin can share the full `kern register --endpoint <url>` command.")
+                fmt.Println()
+                endpoint = prompt(reader, "  API endpoint", "")
+                if endpoint == "" {
+                        return fmt.Errorf("endpoint is required — find it in Settings → CLI Setup on the dashboard")
+                }
         }
         endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
 
