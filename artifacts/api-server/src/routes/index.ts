@@ -9,6 +9,7 @@ import gitRouter from "./git";
 import standupsGenerateRouter from "./standups-generate";
 import sessionsIngestRouter from "./sessions-ingest";
 import integrationsRouter from "./integrations";
+import teamBlockersRouter from "./team-blockers";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(dashboardRouter);
 router.use(teamRouter);
 router.use(gitRouter);
 router.use(integrationsRouter);
+router.use(teamBlockersRouter);
 
 export default router;

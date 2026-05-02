@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { developersTable, teamsTable, workSessionsTable } from "@workspace/db";
+import { developersTable, teamsTable, workSessionsTable, gitCommitsTable, standupsTable } from "@workspace/db";
 import { eq, and, gte, desc } from "drizzle-orm";
 
 const router = Router();
@@ -145,6 +145,57 @@ router.get("/team/snapshot", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get team snapshot");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/team/members/:id/detail", async (req, res) => {
+  try {
+    const devId = parseInt(req.params["id"] ?? "", 10);
+    if (isNaN(devId)) return res.status(400).json({ error: "Invalid developer id" });
+
+    const [dev] = await db.select().from(developersTable).where(eq(developersTable.id, devId)).limit(1);
+    if (!dev) return res.status(404).json({ error: "Developer not found" });
+
+    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const todayStr = new Date().toISOString().split("T")[0]!;
+
+    const [recentSessions, recentCommits, todayStandup] = await Promise.all([
+      db
+        .select()
+        .from(workSessionsTable)
+        .where(and(eq(workSessionsTable.developerId, devId), gte(workSessionsTable.startedAt, twoDaysAgo)))
+        .orderBy(desc(workSessionsTable.startedAt))
+        .limit(8),
+      db
+        .select()
+        .from(gitCommitsTable)
+        .where(and(eq(gitCommitsTable.developerId, devId), gte(gitCommitsTable.committedAt, sevenDaysAgo)))
+        .orderBy(desc(gitCommitsTable.committedAt))
+        .limit(8),
+      db
+        .select()
+        .from(standupsTable)
+        .where(and(eq(standupsTable.developerId, devId), eq(standupsTable.date, todayStr)))
+        .limit(1),
+    ]);
+
+    return res.json({
+      developer: dev,
+      recentSessions: recentSessions.map(s => ({
+        ...s,
+        startedAt: s.startedAt.toISOString(),
+        endedAt: s.endedAt.toISOString(),
+      })),
+      recentCommits: recentCommits.map(c => ({
+        ...c,
+        committedAt: c.committedAt.toISOString(),
+      })),
+      todayStandup: todayStandup[0]?.content ?? null,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get member detail");
     return res.status(500).json({ error: "Internal server error" });
   }
 });
