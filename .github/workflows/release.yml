@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # ── 1. Cross-compile Go binaries for all platforms ─────────────────────────
+  build:
+    name: Build ${{ matrix.asset }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            asset: kern-linux-x64
+          - goos: linux
+            goarch: arm64
+            asset: kern-linux-arm64
+          - goos: darwin
+            goarch: amd64
+            asset: kern-darwin-x64
+          - goos: darwin
+            goarch: arm64
+            asset: kern-darwin-arm64
+          - goos: windows
+            goarch: amd64
+            asset: kern-windows-x64.exe
+          - goos: windows
+            goarch: arm64
+            asset: kern-windows-arm64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+          cache-dependency-path: kern-agent/go.sum
+
+      - name: Build binary
+        working-directory: kern-agent
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p ../dist
+          go build \
+            -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
+            -o ../dist/${{ matrix.asset }} \
+            .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  # ── 2. Create GitHub Release and attach binaries ───────────────────────────
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List built binaries
+        run: ls -lh dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            ```bash
+            npm install -g kern-agent
+            kern init
+            ```
+
+            ### Manual binary download
+
+            | Platform | File |
+            |---|---|
+            | Linux x64 | `kern-linux-x64` |
+            | Linux arm64 | `kern-linux-arm64` |
+            | macOS x64 | `kern-darwin-x64` |
+            | macOS arm64 (M1/M2) | `kern-darwin-arm64` |
+            | Windows x64 | `kern-windows-x64.exe` |
+
+  # ── 3. Publish to npm ───────────────────────────────────────────────────────
+  publish-npm:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Sync version tag → package.json
+        working-directory: kern-agent
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          npm version "$VERSION" --no-git-tag-version
+
+      - name: Publish kern-agent to npm
+        working-directory: kern-agent
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
