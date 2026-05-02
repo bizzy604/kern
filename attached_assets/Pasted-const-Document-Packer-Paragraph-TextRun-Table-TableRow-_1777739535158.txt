@@ -1,0 +1,480 @@
+const {
+  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+  HeadingLevel, AlignmentType, BorderStyle, WidthType, ShadingType,
+  LevelFormat, VerticalAlign, PageBreak
+} = require('docx');
+const fs = require('fs');
+
+const NAVY  = "1A2F4F"; const TEAL  = "007B72"; const WHITE = "FFFFFF";
+const LGRAY = "F4F6F8"; const MGRAY = "D0D5DD"; const BLACK = "111827";
+const DKGRAY= "374151"; const CODE  = "1A1A2E"; const GREEN = "00FF88";
+const AMBER = "F59E0B";
+
+const W = 9360;
+const colW = p => Math.round(W * p);
+const bdr = (c=MGRAY) => ({ style: BorderStyle.SINGLE, size: 1, color: c });
+const bdrs = c => ({ top: bdr(c), bottom: bdr(c), left: bdr(c), right: bdr(c) });
+
+const h1 = t => new Paragraph({ heading: HeadingLevel.HEADING_1, spacing:{before:400,after:160},
+  border:{bottom:{style:BorderStyle.SINGLE,size:8,color:TEAL}},
+  children:[new TextRun({text:t,font:"Arial",size:32,bold:true,color:NAVY})]});
+const h2 = t => new Paragraph({ heading: HeadingLevel.HEADING_2, spacing:{before:300,after:100},
+  children:[new TextRun({text:t,font:"Arial",size:26,bold:true,color:NAVY})]});
+const h3 = t => new Paragraph({ heading: HeadingLevel.HEADING_3, spacing:{before:200,after:80},
+  children:[new TextRun({text:t,font:"Arial",size:22,bold:true,color:DKGRAY})]});
+const body = (t,opts={}) => new Paragraph({spacing:{before:80,after:80},
+  children:[new TextRun({text:t,font:"Arial",size:22,color:BLACK,...opts})]});
+const mono = t => new Paragraph({spacing:{before:60,after:60},
+  shading:{fill:CODE,type:ShadingType.CLEAR}, indent:{left:360, right:360},
+  children:[new TextRun({text:t,font:"Courier New",size:19,color:GREEN})]});
+const bul = (t,lvl=0) => new Paragraph({numbering:{reference:"bullets",level:lvl},
+  spacing:{before:60,after:60},
+  children:[new TextRun({text:t,font:"Arial",size:22,color:BLACK})]});
+const sp = (n=1) => new Paragraph({spacing:{before:n*80},children:[new TextRun("")]});
+const pb = () => new Paragraph({children:[new PageBreak()]});
+
+const hCell = (t,w) => new TableCell({width:{size:w,type:WidthType.DXA},
+  shading:{fill:NAVY,type:ShadingType.CLEAR}, borders:bdrs(NAVY),
+  margins:{top:100,bottom:100,left:140,right:140}, verticalAlign:VerticalAlign.CENTER,
+  children:[new Paragraph({children:[new TextRun({text:t,font:"Arial",size:20,bold:true,color:WHITE})]})]});
+const cell = (t,w,shade=WHITE) => new TableCell({width:{size:w,type:WidthType.DXA},
+  shading:{fill:shade,type:ShadingType.CLEAR}, borders:bdrs(MGRAY),
+  margins:{top:80,bottom:80,left:140,right:140},
+  children:[new Paragraph({children:[new TextRun({text:t,font:"Arial",size:20,color:BLACK})]})]});
+const cellB = (t,w,shade=WHITE) => new TableCell({width:{size:w,type:WidthType.DXA},
+  shading:{fill:shade,type:ShadingType.CLEAR}, borders:bdrs(MGRAY),
+  margins:{top:80,bottom:80,left:140,right:140},
+  children:[new Paragraph({children:[new TextRun({text:t,font:"Arial",size:20,bold:true,color:BLACK})]})]});
+const row = (cells) => new TableRow({children:cells});
+
+function tbl(cols, headers, rows2) {
+  return new Table({ width:{size:W,type:WidthType.DXA}, columnWidths:cols,
+    rows:[row(headers.map((h,i)=>hCell(h,cols[i]))),
+      ...rows2.map((r,ri)=>row(r.map((c,i)=> typeof c==='string'
+        ? (i===0?cellB(c,cols[i],ri%2===0?LGRAY:WHITE):cell(c,cols[i],ri%2===0?LGRAY:WHITE))
+        : c)))]});
+}
+
+const doc = new Document({
+  numbering:{config:[
+    {reference:"bullets",levels:[
+      {level:0,format:LevelFormat.BULLET,text:"\u2022",alignment:AlignmentType.LEFT,
+       style:{paragraph:{indent:{left:600,hanging:300}}}},
+      {level:1,format:LevelFormat.BULLET,text:"\u25E6",alignment:AlignmentType.LEFT,
+       style:{paragraph:{indent:{left:900,hanging:300}}}},
+    ]},
+    {reference:"numbers",levels:[
+      {level:0,format:LevelFormat.DECIMAL,text:"%1.",alignment:AlignmentType.LEFT,
+       style:{paragraph:{indent:{left:600,hanging:300}}}}
+    ]},
+  ]},
+  styles:{
+    default:{document:{run:{font:"Arial",size:22}}},
+    paragraphStyles:[
+      {id:"Heading1",name:"Heading 1",basedOn:"Normal",next:"Normal",quickFormat:true,
+       run:{size:32,bold:true,font:"Arial",color:NAVY},
+       paragraph:{spacing:{before:400,after:160},outlineLevel:0}},
+      {id:"Heading2",name:"Heading 2",basedOn:"Normal",next:"Normal",quickFormat:true,
+       run:{size:26,bold:true,font:"Arial",color:NAVY},
+       paragraph:{spacing:{before:300,after:100},outlineLevel:1}},
+      {id:"Heading3",name:"Heading 3",basedOn:"Normal",next:"Normal",quickFormat:true,
+       run:{size:22,bold:true,font:"Arial",color:DKGRAY},
+       paragraph:{spacing:{before:200,after:80},outlineLevel:2}},
+    ]
+  },
+  sections:[{
+    properties:{page:{size:{width:12240,height:15840},margin:{top:1440,right:1440,bottom:1440,left:1440}}},
+    children:[
+      // Title
+      sp(4),
+      new Paragraph({alignment:AlignmentType.CENTER,
+        children:[new TextRun({text:"KERN",font:"Arial",size:72,bold:true,color:NAVY})]}),
+      new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:160,after:160},
+        children:[new TextRun({text:"System Architecture Document",font:"Arial",size:32,color:TEAL})]}),
+      new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:80,after:80},
+        children:[new TextRun({text:"v1.0 — Production Design | May 2026",font:"Arial",size:24,color:DKGRAY})]}),
+      sp(2),
+      tbl([colW(.32),colW(.68)],["Field","Detail"],[
+        ["Document Type","System Architecture — Production Design"],
+        ["Author","Amoni Erot Kevin — Founder & CTO"],
+        ["Version","1.0"],
+        ["Phase Coverage","Phase 1 (MVP) with Phase 2/3 evolution notes"],
+        ["Primary Stack","Go, TypeScript, Python, PostgreSQL, Redis, AWS"],
+        ["Classification","Confidential Engineering Document"],
+      ]),
+      pb(),
+
+      // 1. Architecture Overview
+      h1("1. Architecture Overview"),
+      body("Kern is designed as a local-first, event-driven behavioral intelligence system. The architecture is split across four distinct layers: the terminal client (Go binary), the cloud ingest and processing pipeline, the AI intelligence layer, and the developer-facing dashboard. Each layer is independently deployable and fail-tolerant."),
+      sp(),
+      body("Core architectural principles:"),
+      bul("Local-first: all raw data captured and stored locally before any cloud transmission"),
+      bul("Event-driven: all behavioral data flows through an async message queue, decoupling ingest from processing"),
+      bul("Eventual consistency: team dashboard data is 15 minutes stale by design — this is acceptable for behavioral intelligence"),
+      bul("Graceful degradation: every external dependency (Claude API, PM tools) has a fallback — core capture never fails"),
+      bul("Simplicity before scale: Phase 1 uses a monolith + SQS; microservices and Kafka introduced at proven scale inflection points"),
+
+      h2("1.1 System Layers"),
+      sp(),
+      // Architecture diagram as formatted text
+      new Paragraph({spacing:{before:100,after:100},
+        shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"┌─────────────────────────────────────────────────────────────────┐",font:"Courier New",size:18,color:TEAL})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"│                    LAYER 1 — TERMINAL CLIENT                    │",font:"Courier New",size:18,color:WHITE})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"│   Shell Hooks → Sanitizer → SQLite → Local AI → Sync Agent      │",font:"Courier New",size:18,color:GREEN})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"└──────────────────────────┬──────────────────────────────────────┘",font:"Courier New",size:18,color:TEAL})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"                           │ TLS 1.3 (HTTPS batch sync)",font:"Courier New",size:18,color:MGRAY})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"┌──────────────────────────▼──────────────────────────────────────┐",font:"Courier New",size:18,color:TEAL})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"│              LAYER 2 — INGEST & PROCESSING PIPELINE             │",font:"Courier New",size:18,color:WHITE})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"│   NestJS Gateway → Dedup/Validate → SQS → Workers               │",font:"Courier New",size:18,color:GREEN})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"└──────────────────────────┬──────────────────────────────────────┘",font:"Courier New",size:18,color:TEAL})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"                 ┌─────────┴──────────┐",font:"Courier New",size:18,color:MGRAY})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"                 ▼                   ▼",font:"Courier New",size:18,color:MGRAY})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"┌────────────────────────┐   ┌───────────────────────────────────┐",font:"Courier New",size:18,color:TEAL})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"│   LAYER 3 — AI ENGINE  │   │      LAYER 4 — DATA STORES        │",font:"Courier New",size:18,color:WHITE})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"│  Session Classifier    │   │  TimescaleDB  PostgreSQL  Redis   │",font:"Courier New",size:18,color:GREEN})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"│  Graph Builder         │   │  S3 (cold)    pgvector           │",font:"Courier New",size:18,color:GREEN})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"│  Standup Generator     │   │                                   │",font:"Courier New",size:18,color:GREEN})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"│  Team Aggregator       │   └───────────────────────────────────┘",font:"Courier New",size:18,color:GREEN})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"└────────────────────────┘             │",font:"Courier New",size:18,color:TEAL})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"                                        ▼",font:"Courier New",size:18,color:MGRAY})]}),
+      new Paragraph({spacing:{before:0,after:100},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"┌───────────────────────────────────────────────────────────────┐",font:"Courier New",size:18,color:TEAL})]}),
+      new Paragraph({spacing:{before:0,after:0},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"│         LAYER 5 — DASHBOARD & INTEGRATION ENGINE              │",font:"Courier New",size:18,color:WHITE})]}),
+      new Paragraph({spacing:{before:0,after:100},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"│  Next.js Dashboard  │  REST API  │  PM Export Engine            │",font:"Courier New",size:18,color:GREEN})]}),
+      new Paragraph({spacing:{before:0,after:100},shading:{fill:CODE,type:ShadingType.CLEAR},indent:{left:200,right:200},
+        children:[new TextRun({text:"└───────────────────────────────────────────────────────────────┘",font:"Courier New",size:18,color:TEAL})]}),
+
+      pb(),
+
+      // 2. Component Details
+      h1("2. Component Deep Dives"),
+
+      h2("2.1 Terminal Plugin (Go Binary)"),
+      body("Language choice: Go. Rationale: single statically-linked binary, sub-millisecond startup, no runtime dependency, compiles to macOS ARM64/x86_64 and Linux. Alternative (Node.js) rejected — startup cost of 80–300ms would violate the 5ms latency budget on every command."),
+      sp(),
+      h3("Shell Hook Mechanism"),
+      mono("# Injected into ~/.zshrc, ~/.bashrc, or ~/.config/fish/config.fish"),
+      mono("preexec()  { kern hook pre  \"$1\"; }   # fires before every command"),
+      mono("precmd()   { kern hook post \"$?\"; }   # fires after command completes"),
+      mono("# Git hooks: installed to .git/hooks/post-commit, post-merge, post-checkout"),
+      sp(),
+      body("The kern binary is called asynchronously in a subprocess — it does not block the user's command execution. The 5ms budget is for the hook invocation overhead, not the kern binary's full execution time."),
+      sp(),
+      h3("Event Capture & Sanitization"),
+      body("All events are sanitized before any storage — local or cloud. The sanitizer runs regex patterns against command strings to remove secrets before they touch disk."),
+      sp(),
+      tbl([colW(.30),colW(.70)],["Secret Pattern","Regex (representative)"],
+        [["OpenAI API Key","sk-[a-zA-Z0-9]{48}"],
+         ["GitHub PAT","ghp_[a-zA-Z0-9]{36} | github_pat_[a-zA-Z0-9_]{82}"],
+         ["AWS Key","AKIA[0-9A-Z]{16}"],
+         ["Generic long base64","[A-Za-z0-9+/]{40,}={0,2}"],
+         ["Bearer tokens","-H ['\"]?Authorization: Bearer [^ '\"]+"],
+         ["Passwords in flags","--password[= ][^ ]+ | -p [^ ]+"]]),
+      sp(),
+      h3("Local SQLite Schema (abbreviated)"),
+      mono("CREATE TABLE events ("),
+      mono("  event_id      TEXT PRIMARY KEY,     -- UUID v4"),
+      mono("  device_id     TEXT NOT NULL,         -- hashed fingerprint"),
+      mono("  timestamp     INTEGER NOT NULL,       -- Unix ms"),
+      mono("  event_type    TEXT NOT NULL,          -- COMMAND|GIT_COMMIT|SESSION"),
+      mono("  work_dir_hash TEXT,                  -- SHA256 of path"),
+      mono("  command_meta  TEXT,                  -- sanitized command head"),
+      mono("  exit_code     INTEGER,"),
+      mono("  duration_ms   INTEGER,"),
+      mono("  git_branch    TEXT,"),
+      mono("  git_repo      TEXT,"),
+      mono("  synced        INTEGER DEFAULT 0,     -- 0=pending, 1=synced"),
+      mono("  created_at    INTEGER NOT NULL"),
+      mono(");"),
+      mono("CREATE INDEX idx_events_sync ON events(synced, timestamp);"),
+      sp(),
+      h3("Sync Agent"),
+      body("A goroutine wakes every 5 minutes. It queries SQLite for unsynced events (batch up to 2,000), serializes to JSON, gzip-compresses, and POST to /v1/events/batch. On HTTP 200, marks events as synced. On failure, backs off exponentially (5m, 10m, 20m, max 1h). Network errors are logged locally, never surfaced to the user's terminal."),
+
+      h2("2.2 Ingest Gateway (NestJS)"),
+      body("The ingest gateway is a stateless NestJS application using the Fastify adapter for performance. It handles authentication, validation, deduplication, and queue publishing. It does NOT process events — that is the worker's job."),
+      sp(),
+      h3("Request Processing Flow"),
+      mono("POST /v1/events/batch"),
+      mono("  1. Verify device JWT (asymmetric RSA-2048 signature)"),
+      mono("  2. Deserialize and validate event batch (Zod schema)"),
+      mono("  3. Check dedup bloom filter (Redis) — skip known event_ids"),
+      mono("  4. Publish to SQS queue: kern-events-raw"),
+      mono("  5. Return HTTP 202 Accepted immediately"),
+      mono("     Total handler time target: < 50ms"),
+      sp(),
+      body("Design decision: return 202 (not 200) — the gateway guarantees events are queued, not processed. This is intentional. Processing is async and may take seconds. The client only needs to know the event was durably accepted."),
+      sp(),
+      tbl([colW(.30),colW(.70)],["Design Choice","Rationale"],[
+        ["Fastify adapter over Express","2–3x lower p99 latency under load for JSON-heavy APIs"],
+        ["SQS over direct DB write","Decouples ingest from processing; handles bursts; 99.9% SQS durability"],
+        ["Bloom filter dedup","O(1) dedup check without DB query on hot path; 0.1% false positive rate acceptable"],
+        ["202 Accepted response","Separates ingest acknowledgment from processing guarantees; correct HTTP semantics"],
+      ]),
+
+      h2("2.3 AI Pipeline (Python / FastAPI)"),
+      body("The AI pipeline consumes events from SQS and produces WorkSession records. It runs three sub-processors independently."),
+      sp(),
+      h3("Sub-Processor 1: Session Classifier"),
+      body("Consumes TerminalEvent records, groups by developer and time window (10-minute idle boundary), and classifies each session. Uses local ONNX model for fast classification; falls back to Claude API for complex or ambiguous sessions (confidence < 0.7 from local model)."),
+      sp(),
+      tbl([colW(.25),colW(.75)],["Activity Type","Signal Patterns"],[
+        ["CODING","Editor-related commands, file writes to src/ directories, build tool invocations"],
+        ["DEBUGGING","gdb, lldb, pdb, console.log patterns, repeated test runs with failures"],
+        ["TESTING","pytest, jest, go test, npm test, failing exit codes followed by fixes"],
+        ["DEVOPS","kubectl, docker, terraform, aws cli, ansible, helm commands"],
+        ["RESEARCHING","curl, wget, man, --help flags, browser (detected via URL patterns)"],
+        ["IDLE","No command for > 10 minutes; or only idle commands (ls, pwd, echo)"],
+      ]),
+      sp(),
+      h3("Sub-Processor 2: Behavioral Graph Builder"),
+      body("Maintains a weighted directed graph per developer in PostgreSQL. Nodes are entities (project, language, technology, collaborator). Edges carry weight (time spent), recency (last seen), and frequency (touch count). Updated after each session. This graph is the core proprietary data moat."),
+      sp(),
+      h3("Sub-Processor 3: Standup Generator"),
+      body("Scheduled job (cron at 8:55 AM per developer local time). Queries last 24h WorkSessions. Constructs a prompt with behavioral context and calls Claude API. Output is stored as a Standup record. Failure is soft — developer sees 'Generation failed' with a retry button in dashboard."),
+      sp(),
+      mono("Prompt structure:"),
+      mono("  System: You are generating a developer standup from behavioral data."),
+      mono("          Output first-person, under 150 words, professional tone."),
+      mono("          Do not mention specific command names or internal paths."),
+      mono("  User:   Developer: [name]"),
+      mono("          Yesterday's sessions: [WorkSession[] as JSON]"),
+      mono("          Generate standup covering: what was done, any blockers, today's plan."),
+
+      h2("2.4 Data Layer"),
+      sp(),
+      h3("TimescaleDB — Time-Series Events"),
+      body("TerminalEvent and WorkSession tables are stored as TimescaleDB hypertables, partitioned by timestamp in 1-day chunks. Chunks older than 7 days are compressed (10x storage reduction). Queries across time windows are optimized by chunk exclusion."),
+      sp(),
+      mono("SELECT create_hypertable('terminal_events', 'timestamp',"),
+      mono("  chunk_time_interval => INTERVAL '1 day');"),
+      mono("SELECT add_compression_policy('terminal_events', INTERVAL '7 days');"),
+      mono("SELECT add_retention_policy('terminal_events', INTERVAL '90 days');"),
+      sp(),
+      body("Rationale: raw Postgres with a B-tree index on timestamp degrades to O(log n) range scans at 50M+ rows. TimescaleDB chunk exclusion makes time-range queries O(chunks_in_range) — typically 1–7 at query time regardless of total table size."),
+      sp(),
+      h3("PostgreSQL — Transactional Data"),
+      body("Entities with relational integrity requirements (developers, teams, work_sessions, standups, integrations, behavioral_graph) live in standard PostgreSQL. ACID transactions, foreign key constraints, and row-level security (RLS) are used for multi-tenant isolation."),
+      sp(),
+      h3("Redis — Cache & Rate Limiting"),
+      tbl([colW(.35),colW(.20),colW(.45)],["Key Pattern","TTL","Purpose"],[
+        ["dashboard:{dev_id}:summary","60s","Cached personal dashboard data"],
+        ["team:{team_id}:snapshot","900s (15m)","Cached team dashboard — eventual consistency"],
+        ["ratelimit:{device_id}","sliding 1m","Per-device sync rate limiting (max 10 req/min)"],
+        ["dedup:bloom","static","Bloom filter for event dedup on ingest path"],
+        ["standup:{dev_id}:{date}","86400s","Today's generated standup"],
+      ]),
+      sp(),
+      h3("S3 — Cold Storage & Archives"),
+      body("TerminalEvents older than 90 days are exported to S3 in Parquet format via a nightly job. Queryable via AWS Athena for analytics and model training. WorkSessions are never cold-archived — they are the hot product data."),
+      sp(),
+      h3("pgvector — Semantic Embeddings"),
+      body("WorkSession.inferred_task descriptions are embedded using Claude's text-embedding-3-small equivalent and stored in a vector column. This enables semantic search: 'Find all sessions where I worked on authentication-related tasks across any project.' Indexed with IVFFlat (nlist=100) for approximate nearest-neighbor search."),
+      sp(),
+      mono("ALTER TABLE work_sessions ADD COLUMN embedding vector(1536);"),
+      mono("CREATE INDEX ON work_sessions USING ivfflat (embedding vector_cosine_ops)"),
+      mono("  WITH (lists = 100);"),
+
+      pb(),
+
+      // 3. Data Flow
+      h1("3. Data Flow Specification"),
+      h2("3.1 Event Capture to Dashboard (Happy Path)"),
+      sp(),
+      tbl([colW(.08),colW(.25),colW(.67)],["Step","Component","Action"],[
+        ["1","Terminal Plugin","Developer runs a command → preexec() fires → kern hook pre captures event"],
+        ["2","Terminal Plugin","Event sanitized, classified by local ONNX model, written to SQLite"],
+        ["3","Terminal Plugin (async)","Every 5 min: sync agent reads unsyced events, gzips, POSTs to Gateway"],
+        ["4","Ingest Gateway","Validates JWT, checks bloom filter, publishes to SQS kern-events-raw"],
+        ["5","SQS","Durably stores event batch; delivers to worker within < 1 second"],
+        ["6","AI Pipeline: Classifier","Groups events into sessions, classifies activity type, calls Claude if needed"],
+        ["7","AI Pipeline: Graph Builder","Updates developer's behavioral graph edges and weights"],
+        ["8","TimescaleDB","WorkSession record written; embedding stored in pgvector"],
+        ["9","Redis","Dashboard cache invalidated for this developer (TTL reset)"],
+        ["10","Dashboard API","Next dashboard request hits Redis miss → queries TimescaleDB → re-caches → returns"],
+        ["11","Dashboard (browser)","Developer sees updated activity data"],
+      ]),
+      sp(),
+      body("End-to-end latency (event captured → visible in dashboard): 5–15 minutes. This is intentional and acceptable. Developers are not watching their dashboard in real-time during work."),
+
+      h2("3.2 Standup Generation Flow"),
+      tbl([colW(.08),colW(.30),colW(.62)],["Step","Component","Action"],[
+        ["1","Scheduler","Cron fires at 8:55 AM developer local time"],
+        ["2","Standup Service","Queries WorkSessions for developer: last 24 hours"],
+        ["3","Standup Service","Constructs Claude API prompt with session summaries"],
+        ["4","Claude API","Returns standup text (< 150 words, first-person)"],
+        ["5","Standup Service","Stores Standup record: developer_id, date, content, source=AI"],
+        ["6","Dashboard","Developer opens dashboard, sees standup ready for review"],
+        ["7","Developer","Optionally edits, then clicks Post to Slack (if integrated)"],
+      ]),
+
+      // 4. Scalability
+      h1("4. Scalability Strategy"),
+      h2("4.1 Phase Evolution"),
+      sp(),
+      tbl([colW(.18),colW(.15),colW(.67)],["Phase","DAU","Architecture"],
+        [["Phase 1 (MVP)","500","Single NestJS monolith. PostgreSQL + TimescaleDB on one RDS instance. Redis single node. SQS. Deploy on Railway. No K8s. Cost: ~$150/month."],
+         ["Phase 2","10,000","Extract AI Pipeline as separate service on GPU-optimized EC2. RDS Multi-AZ. ElastiCache Redis cluster. SQS → consider MSK (Kafka). Auto-scaling NestJS on ECS. Cost: ~$1,500/month."],
+         ["Phase 3","100,000","Full EKS (Kubernetes). MSK Kafka. TimescaleDB distributed (Timescale Cloud). Read replicas for dashboard queries. CDN for static assets. Proprietary ONNX model replaces Claude API. Cost: ~$8,000/month."],
+        ]),
+      sp(),
+      h2("4.2 Horizontal Scaling Points"),
+      bul("Ingest Gateway: stateless — scale horizontally behind ALB with no coordination"),
+      bul("AI Pipeline Workers: SQS consumers scale horizontally; each worker is independent"),
+      bul("Dashboard API: stateless read service — scale horizontally; Redis handles session state"),
+      bul("TimescaleDB: read replicas for dashboard queries; write to primary only"),
+      bul("NOT horizontal at Phase 1: graph builder must be coordinated to prevent race conditions on edge updates — use distributed lock (Redis SETNX) in Phase 2"),
+
+      h2("4.3 Capacity Math"),
+      tbl([colW(.35),colW(.65)],["Variable","Estimate"],[
+        ["Events per developer per day","500 (avg), 2,000 (DevOps power user)"],
+        ["Event payload size","300 bytes (sanitized metadata)"],
+        ["Daily ingest @ 10K DAU","5M events × 300B = 1.5GB/day"],
+        ["TimescaleDB compressed size","~150MB/day (10x compression ratio)"],
+        ["WorkSessions per developer per day","~12 (avg session length ~40 min)"],
+        ["WorkSession record size","~2KB (including embedding: 1536 float32 = 6KB)"],
+        ["pgvector storage @ 10K DAU","12 sessions × 10K devs × 6KB = 720MB/day"],
+        ["S3 cold archive growth","~150MB/day compressed Parquet"],
+      ]),
+
+      // 5. Reliability
+      h1("5. Reliability & Fault Tolerance"),
+      h2("5.1 Failure Scenarios & Mitigations"),
+      sp(),
+      tbl([colW(.30),colW(.70)],["Failure Scenario","Mitigation"],[
+        ["Network outage (developer)","SQLite buffer holds 30 days. Sync resumes automatically. Zero data loss."],
+        ["Ingest Gateway crashes","Load balancer routes to other instances (stateless). SQS retains events 7 days."],
+        ["SQS message delivery failure","SQS DLQ (Dead Letter Queue) catches failed messages after 3 attempts. Alert fires. Manual replay supported."],
+        ["Claude API outage","Standup generation fails gracefully — developer sees retry button. Local ONNX model continues session classification. Core capture unaffected."],
+        ["AI Pipeline worker crash","SQS visibility timeout (30min) returns message to queue. Another worker picks it up. Idempotent processing via WorkSession unique constraint."],
+        ["PostgreSQL primary failure","RDS Multi-AZ automatic failover: < 30 seconds. Dashboard reads degrade to cache-only during failover."],
+        ["Redis cache eviction","Cache miss: fallback to DB query. Slower response but correct data. TTL-based eviction is expected behavior, not a failure."],
+        ["PM export API failure","Circuit breaker opens after 3 consecutive failures. Retry queue with exponential backoff. Core product unaffected — PM sync is non-critical path."],
+      ]),
+      sp(),
+      h2("5.2 Circuit Breaker Configuration"),
+      tbl([colW(.30),colW(.23),colW(.23),colW(.24)],["Dependency","Failure Threshold","Reset Timeout","Fallback"],[
+        ["Claude API","3 errors in 1 minute","10 minutes","Local ONNX model / skip standup"],
+        ["Asana API","3 errors in 1 minute","10 minutes","Queue for retry, alert admin"],
+        ["Jira API","3 errors in 1 minute","10 minutes","Queue for retry, alert admin"],
+        ["Redis","5 errors in 30 seconds","60 seconds","Direct DB query"],
+      ]),
+
+      // 6. Security
+      h1("6. Security Architecture"),
+      h2("6.1 Authentication Flow"),
+      body("Developer authentication uses two separate mechanisms: GitHub OAuth for web dashboard access (user identity), and asymmetric device keys for terminal plugin sync (machine identity). These are intentionally separate — compromising a web session does not give access to sync credentials."),
+      sp(),
+      tbl([colW(.30),colW(.70)],["Auth Surface","Mechanism"],[
+        ["Dashboard login","GitHub OAuth 2.0. Scope: read:user, user:email. JWT session token (RS256, 7-day expiry, stored in httpOnly cookie)."],
+        ["Plugin sync auth","RSA-2048 key pair. Generated on kern init. Public key registered to developer account. Each sync request signed with private key. Server verifies signature. Keys rotate every 90 days."],
+        ["Team admin actions","RBAC enforced on all API endpoints. Roles: DEVELOPER (read own data), TEAM_LEAD (read team data), ADMIN (manage team + integrations). Implemented via NestJS Guards + PostgreSQL RLS."],
+        ["PM integrations","OAuth tokens encrypted with AWS KMS per-team keys before storage. Never logged. Rotated on reconnection."],
+      ]),
+      sp(),
+      h2("6.2 Data Security"),
+      bul("Encryption at rest: AES-256 via AWS KMS for all RDS volumes, S3 buckets, and Redis snapshots"),
+      bul("Encryption in transit: TLS 1.3 enforced; TLS 1.0/1.1 disabled on all load balancers"),
+      bul("No raw commands in cloud: sanitization is enforced in the plugin before SQLite write — cloud API rejects any payload containing known secret patterns as defense in depth"),
+      bul("Row-level security: PostgreSQL RLS policies ensure developers can only query their own data; team leads can query team-scoped data"),
+      bul("Secrets in environment: no secrets in code, configs, or logs — all via AWS Secrets Manager"),
+
+      // 7. Observability
+      h1("7. Observability"),
+      h2("7.1 Metrics (Prometheus + Grafana)"),
+      tbl([colW(.40),colW(.60)],["Metric","Alert Threshold"],[
+        ["kern_ingest_latency_p99","Alert if > 500ms for > 5 minutes"],
+        ["kern_sync_success_rate","Alert if < 99% over 15-minute window"],
+        ["kern_ai_pipeline_queue_depth","Alert if SQS depth > 10,000 messages"],
+        ["kern_claude_api_error_rate","Alert if > 5% errors in 5-minute window"],
+        ["kern_dashboard_p95_latency","Alert if > 500ms for > 5 minutes"],
+        ["kern_db_connection_pool_usage","Alert if > 80% of max connections"],
+        ["kern_terminal_events_per_minute","Alert if drops > 50% vs. 24h average (potential plugin bug)"],
+      ]),
+      sp(),
+      h2("7.2 Logging"),
+      bul("Structured JSON logs via Pino (NestJS) and zerolog (Go plugin)"),
+      bul("Log levels: ERROR (always), WARN (rate-limited), INFO (sampling 10%), DEBUG (dev only)"),
+      bul("Sensitive data never logged: event payloads are logged as metadata counts, not content"),
+      bul("Centralized in AWS CloudWatch Logs with 30-day retention"),
+      sp(),
+      h2("7.3 Distributed Tracing"),
+      bul("OpenTelemetry instrumentation on all services"),
+      bul("Trace spans: ingest gateway → SQS publish → worker → DB write → cache update"),
+      bul("Sampling: 100% for errors, 10% for normal requests"),
+      bul("Backend: AWS X-Ray (Phase 1), Jaeger self-hosted (Phase 3)"),
+
+      // 8. Tech Stack
+      h1("8. Technology Stack Summary"),
+      sp(),
+      tbl([colW(.25),colW(.30),colW(.45)],["Layer","Technology","Rationale"],[
+        ["Terminal Plugin","Go 1.22+","Zero-dependency binary, <5ms overhead requirement, cross-platform"],
+        ["Local AI Model","ONNX Runtime (Go bindings)","Offline inference, <15MB model, <2ms classification"],
+        ["Local Storage","SQLite (WAL mode)","Zero-dependency, crash-safe, 30-day event buffer"],
+        ["Ingest Gateway","NestJS + Fastify","TypeScript ecosystem, Fastify for low-latency JSON handling"],
+        ["Message Queue","AWS SQS (Phase 1→2), MSK/Kafka (Phase 3)","Managed, durable, decouples ingest from processing"],
+        ["AI Pipeline","Python 3.11 + FastAPI","Best LLM/ML ecosystem; FastAPI for async workers"],
+        ["LLM","Claude API (claude-sonnet)","Standup generation, complex session inference"],
+        ["Primary DB","PostgreSQL 16 + TimescaleDB","ACID + time-series optimization; one DB engine to operate"],
+        ["Vector Storage","pgvector extension","Semantic search without separate vector DB infra in Phase 1"],
+        ["Cache","Redis 7 (ElastiCache)","Dashboard caching, rate limiting, bloom filter, session tokens"],
+        ["Object Storage","AWS S3","Cold event archives, model artifacts, static assets"],
+        ["Dashboard","Next.js 14 (App Router)","SSR for initial load performance; React for interactivity"],
+        ["Infrastructure","Docker → Railway (P1) → EKS (P3)","Progressive infra complexity; Railway for zero-ops MVP"],
+        ["CI/CD","GitHub Actions","Native GitHub integration; matrix testing for plugin shell compat"],
+        ["Observability","Prometheus + Grafana + Sentry","Open-source stack; Sentry for error tracking"],
+        ["IaC","Terraform (Phase 2+)","Reproducible infra; Phase 1 uses Railway dashboard"],
+      ]),
+
+      // 9. Deployment
+      h1("9. Phase 1 Deployment Architecture"),
+      body("Phase 1 is deployed on Railway.app for zero operational overhead. No Kubernetes, no Terraform, no DevOps hire required. One engineer can manage the entire stack."),
+      sp(),
+      tbl([colW(.30),colW(.70)],["Service","Deployment"],[
+        ["Ingest Gateway (NestJS)","Railway service: Docker container, auto-deploy on main branch push"],
+        ["AI Pipeline (Python)","Railway service: separate Docker container, consumes from SQS"],
+        ["Dashboard API (NestJS)","Railway service: same codebase as gateway, separate Railway service"],
+        ["Next.js Dashboard","Vercel: zero-config deployment, CDN-delivered, custom domain kern.dev"],
+        ["PostgreSQL + TimescaleDB","Railway Postgres plugin with TimescaleDB extension"],
+        ["Redis","Railway Redis plugin"],
+        ["SQS","AWS SQS (free tier covers Phase 1 volume)"],
+        ["S3","AWS S3 (< $1/month at Phase 1 volume)"],
+        ["Domain & TLS","Cloudflare: DNS + TLS termination + DDoS protection"],
+      ]),
+      sp(),
+      body("Estimated Phase 1 infrastructure cost: $120–180/month. This scales linearly with usage until Phase 2 migration at ~5,000 DAU."),
+
+      sp(2),
+      new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:400},
+        border:{top:{style:BorderStyle.SINGLE,size:4,color:MGRAY}},
+        children:[new TextRun({text:"Kern System Architecture v1.0 — Confidential | May 2026",font:"Arial",size:18,color:DKGRAY})]})
+    ]
+  }]
+});
+
+Packer.toBuffer(doc).then(buf => {
+  fs.writeFileSync('/home/claude/kern-architecture.docx', buf);
+  console.log('Architecture doc generated');
+});

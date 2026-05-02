@@ -3,20 +3,29 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: KERN behavioral intelligence API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: developers
+    description: Developer profile operations
+  - name: sessions
+    description: Work session operations
+  - name: standups
+    description: Standup operations
+  - name: team
+    description: Team operations
+  - name: dashboard
+    description: Dashboard summary operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +33,236 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /developers/me:
+    get:
+      operationId: getMe
+      tags: [developers]
+      summary: Get current developer profile
+      responses:
+        "200":
+          description: Current developer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Developer"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get personal dashboard summary
+      responses:
+        "200":
+          description: Dashboard summary with today's stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/activity-breakdown:
+    get:
+      operationId: getActivityBreakdown
+      tags: [dashboard]
+      summary: Get activity breakdown by type for a date range
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 7
+      responses:
+        "200":
+          description: Activity breakdown grouped by type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityBreakdown"
+
+  /sessions:
+    get:
+      operationId: listSessions
+      tags: [sessions]
+      summary: List work sessions
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: date
+          in: query
+          description: Filter by date (YYYY-MM-DD)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of work sessions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionList"
+
+  /sessions/{id}:
+    get:
+      operationId: getSession
+      tags: [sessions]
+      summary: Get a specific work session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Work session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkSession"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /standups:
+    get:
+      operationId: listStandups
+      tags: [standups]
+      summary: List standups
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of standups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandupList"
+
+  /standups/today:
+    get:
+      operationId: getTodayStandup
+      tags: [standups]
+      summary: Get today's standup
+      responses:
+        "200":
+          description: Today's standup (may be null if not generated yet)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandupOrNull"
+
+  /standups/{id}:
+    get:
+      operationId: getStandup
+      tags: [standups]
+      summary: Get a specific standup
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Standup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Standup"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: updateStandup
+      tags: [standups]
+      summary: Update standup content (manual edit)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStandupBody"
+      responses:
+        "200":
+          description: Updated standup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Standup"
+
+  /standups/{id}/post:
+    post:
+      operationId: postStandupToSlack
+      tags: [standups]
+      summary: Post standup to Slack
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Post result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlackPostResult"
+
+  /team/members:
+    get:
+      operationId: listTeamMembers
+      tags: [team]
+      summary: List team members with their activity snapshot
+      responses:
+        "200":
+          description: Team members with activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMemberList"
+
+  /team/snapshot:
+    get:
+      operationId: getTeamSnapshot
+      tags: [team]
+      summary: Get team-level activity snapshot (15min cached)
+      responses:
+        "200":
+          description: Aggregated team snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamSnapshot"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +270,316 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    Developer:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        githubHandle:
+          type: string
+          nullable: true
+        teamId:
+          type: integer
+          nullable: true
+        teamName:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [DEVELOPER, TEAM_LEAD, ADMIN]
+        timezone:
+          type: string
+        createdAt:
+          type: string
+      required: [id, name, email, role, timezone, createdAt]
+
+    DashboardSummary:
+      type: object
+      properties:
+        todaySessionCount:
+          type: integer
+        todayActiveMinutes:
+          type: integer
+        todayCommandCount:
+          type: integer
+        weeklyActiveMinutes:
+          type: integer
+        currentStreak:
+          type: integer
+          description: Days with at least one session
+        topActivityToday:
+          type: string
+          nullable: true
+          enum: [CODING, DEBUGGING, TESTING, DEVOPS, RESEARCHING, IDLE, null]
+        recentSessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkSession"
+        standupReady:
+          type: boolean
+      required:
+        - todaySessionCount
+        - todayActiveMinutes
+        - todayCommandCount
+        - weeklyActiveMinutes
+        - currentStreak
+        - recentSessions
+        - standupReady
+
+    ActivityBreakdown:
+      type: object
+      properties:
+        days:
+          type: integer
+        breakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityTypeStat"
+        dailySeries:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailyActivityPoint"
+      required: [days, breakdown, dailySeries]
+
+    ActivityTypeStat:
+      type: object
+      properties:
+        activityType:
+          type: string
+          enum: [CODING, DEBUGGING, TESTING, DEVOPS, RESEARCHING, IDLE]
+        totalMinutes:
+          type: integer
+        sessionCount:
+          type: integer
+        percentage:
+          type: number
+      required: [activityType, totalMinutes, sessionCount, percentage]
+
+    DailyActivityPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        totalMinutes:
+          type: integer
+        sessionCount:
+          type: integer
+        breakdown:
+          type: object
+          additionalProperties:
+            type: integer
+      required: [date, totalMinutes, sessionCount, breakdown]
+
+    WorkSession:
+      type: object
+      properties:
+        id:
+          type: integer
+        developerId:
+          type: integer
+        activityType:
+          type: string
+          enum: [CODING, DEBUGGING, TESTING, DEVOPS, RESEARCHING, IDLE]
+        inferredTask:
+          type: string
+          nullable: true
+        project:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+        durationMinutes:
+          type: integer
+        commandCount:
+          type: integer
+        startedAt:
+          type: string
+        endedAt:
+          type: string
+        confidence:
+          type: number
+          description: Classification confidence 0-1
+      required:
+        - id
+        - developerId
+        - activityType
+        - durationMinutes
+        - commandCount
+        - startedAt
+        - endedAt
+        - confidence
+
+    SessionList:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkSession"
+        total:
+          type: integer
+      required: [sessions, total]
+
+    Standup:
+      type: object
+      properties:
+        id:
+          type: integer
+        developerId:
+          type: integer
+        date:
+          type: string
+        content:
+          type: string
+        source:
+          type: string
+          enum: [AI, MANUAL]
+        postedToSlack:
+          type: boolean
+        postedAt:
+          type: string
+          nullable: true
+        generatedAt:
+          type: string
+      required: [id, developerId, date, content, source, postedToSlack, generatedAt]
+
+    StandupOrNull:
+      type: object
+      properties:
+        standup:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Standup"
+      required: [standup]
+
+    StandupList:
+      type: object
+      properties:
+        standups:
+          type: array
+          items:
+            $ref: "#/components/schemas/Standup"
+        total:
+          type: integer
+      required: [standups, total]
+
+    UpdateStandupBody:
+      type: object
+      properties:
+        content:
+          type: string
+      required: [content]
+
+    SlackPostResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required: [success, message]
+
+    TeamMember:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        githubHandle:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [DEVELOPER, TEAM_LEAD, ADMIN]
+        todayActiveMinutes:
+          type: integer
+        todaySessionCount:
+          type: integer
+        currentActivity:
+          type: string
+          nullable: true
+          enum: [CODING, DEBUGGING, TESTING, DEVOPS, RESEARCHING, IDLE, null]
+        lastSeenAt:
+          type: string
+          nullable: true
+        streak:
+          type: integer
+      required: [id, name, email, role, todayActiveMinutes, todaySessionCount, streak]
+
+    TeamMemberList:
+      type: object
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamMember"
+        total:
+          type: integer
+      required: [members, total]
+
+    TeamSnapshot:
+      type: object
+      properties:
+        teamName:
+          type: string
+        totalActiveMinutesToday:
+          type: integer
+        totalSessionsToday:
+          type: integer
+        activeMembersToday:
+          type: integer
+        totalMembers:
+          type: integer
+        activityBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityTypeStat"
+        topProjects:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectStat"
+        cachedAt:
+          type: string
+      required:
+        - teamName
+        - totalActiveMinutesToday
+        - totalSessionsToday
+        - activeMembersToday
+        - totalMembers
+        - activityBreakdown
+        - topProjects
+        - cachedAt
+
+    ProjectStat:
+      type: object
+      properties:
+        project:
+          type: string
+        totalMinutes:
+          type: integer
+        contributorCount:
+          type: integer
+      required: [project, totalMinutes, contributorCount]
