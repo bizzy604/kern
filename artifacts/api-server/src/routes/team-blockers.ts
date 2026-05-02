@@ -3,16 +3,27 @@ import { db } from "@workspace/db";
 import { developersTable, teamsTable, workSessionsTable, gitCommitsTable, standupsTable } from "@workspace/db";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { requireSession } from "../middleware/session";
 
 const router = Router();
 
-router.post("/team/blockers/analyze", async (req, res) => {
+router.post("/team/blockers/analyze", requireSession, async (req, res) => {
   try {
-    const developers = await db.select().from(developersTable);
+    const me = req.developer!;
+
+    // Scope to the logged-in developer's team only
+    const developers = await db.select().from(developersTable)
+      .where(
+        me.teamId
+          ? eq(developersTable.teamId, me.teamId)
+          : eq(developersTable.id, me.id),
+      );
+
     if (developers.length === 0) return res.status(404).json({ error: "No developers found" });
 
-    const team = await db.select().from(teamsTable).limit(1);
-    const teamName = team[0]?.name ?? "Engineering Team";
+    const teamName = me.teamId
+      ? (await db.select({ name: teamsTable.name }).from(teamsTable).where(eq(teamsTable.id, me.teamId)).limit(1))[0]?.name ?? "Engineering Team"
+      : "Solo";
 
     const now = new Date();
     const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
@@ -22,65 +33,50 @@ router.post("/team/blockers/analyze", async (req, res) => {
     const devProfiles = await Promise.all(
       developers.map(async dev => {
         const [recentSessions, recentCommits, todayStandup] = await Promise.all([
-          db
-            .select()
-            .from(workSessionsTable)
+          db.select().from(workSessionsTable)
             .where(and(eq(workSessionsTable.developerId, dev.id), gte(workSessionsTable.startedAt, twoDaysAgo)))
-            .orderBy(desc(workSessionsTable.startedAt))
-            .limit(15),
-          db
-            .select()
-            .from(gitCommitsTable)
+            .orderBy(desc(workSessionsTable.startedAt)).limit(15),
+          db.select().from(gitCommitsTable)
             .where(and(eq(gitCommitsTable.developerId, dev.id), gte(gitCommitsTable.committedAt, sevenDaysAgo)))
-            .orderBy(desc(gitCommitsTable.committedAt))
-            .limit(10),
-          db
-            .select()
-            .from(standupsTable)
-            .where(and(eq(standupsTable.developerId, dev.id), eq(standupsTable.date, todayStr)))
-            .limit(1),
+            .orderBy(desc(gitCommitsTable.committedAt)).limit(10),
+          db.select().from(standupsTable)
+            .where(and(eq(standupsTable.developerId, dev.id), eq(standupsTable.date, todayStr))).limit(1),
         ]);
 
         const totalMins = recentSessions.reduce((sum, s) => sum + s.durationMinutes, 0);
         const debugMins = recentSessions.filter(s => s.activityType === "DEBUGGING").reduce((sum, s) => sum + s.durationMinutes, 0);
-        const lastSeen = recentSessions[0]?.endedAt;
-        const currentActivity = recentSessions[0]?.activityType;
-        const currentProject = recentSessions[0]?.project;
-
-        const sessionSummary = recentSessions.length
-          ? recentSessions
-              .map(s => `  - ${s.activityType} on "${s.project || "?"}" for ${s.durationMinutes}m` +
-                (s.inferredTask ? `: ${s.inferredTask}` : ""))
-              .join("\n")
-          : "  No sessions in the last 48h";
-
-        const commitSummary = recentCommits.length
-          ? recentCommits
-              .map(c => `  - [${c.shortHash}] ${c.branch}: "${c.message}" (+${c.insertions}/-${c.deletions}, ${c.project || "?"})`)
-              .join("\n")
-          : "  No recent commits";
 
         return {
           name: dev.name,
+          isMe: dev.id === me.id,
           role: dev.role,
-          currentActivity: currentActivity ?? "IDLE",
-          currentProject: currentProject ?? null,
-          lastSeen: lastSeen?.toISOString() ?? null,
+          currentActivity: recentSessions[0]?.activityType ?? "IDLE",
+          currentProject: recentSessions[0]?.project ?? null,
+          lastSeen: recentSessions[0]?.endedAt?.toISOString() ?? null,
           totalMins,
           debugMins,
           standup: todayStandup[0]?.content ?? null,
-          sessionSummary,
-          commitSummary,
+          sessionSummary: recentSessions.length
+            ? recentSessions.map(s =>
+                `  - ${s.activityType} on "${s.project || "?"}" for ${s.durationMinutes}m` +
+                (s.inferredTask ? `: ${s.inferredTask}` : ""),
+              ).join("\n")
+            : "  No sessions in the last 48h",
+          commitSummary: recentCommits.length
+            ? recentCommits.map(c =>
+                `  - [${c.shortHash}] ${c.branch}: "${c.message}" (+${c.insertions}/-${c.deletions}, ${c.project || "?"})`,
+              ).join("\n")
+            : "  No recent commits",
         };
       }),
     );
 
     const profilesText = devProfiles.map(d => `
-### ${d.name} (${d.role})
-- Current status: ${d.currentActivity}${d.currentProject ? ` on "${d.currentProject}"` : ""}
+### ${d.name}${d.isMe ? " (you)" : ""} (${d.role})
+- Status: ${d.currentActivity}${d.currentProject ? ` on "${d.currentProject}"` : ""}
 - Last seen: ${d.lastSeen ? new Date(d.lastSeen).toLocaleString() : "unknown"}
-- Total time (last 48h): ${Math.floor(d.totalMins / 60)}h ${d.totalMins % 60}m (${d.debugMins}m debugging)
-- Today's standup: ${d.standup ? `"${d.standup.slice(0, 300)}…"` : "Not generated yet"}
+- Time (last 48h): ${Math.floor(d.totalMins / 60)}h ${d.totalMins % 60}m (${d.debugMins}m debugging)
+- Standup: ${d.standup ? `"${d.standup.slice(0, 300)}…"` : "Not generated yet"}
 - Recent sessions:
 ${d.sessionSummary}
 - Recent commits:
@@ -96,26 +92,26 @@ Today's date: ${todayStr}
 Team activity data:
 ${profilesText}
 
-Produce a structured team intelligence report. For each developer, assess their status. Use these categories:
+Produce a structured team intelligence report. For each developer, assess their status:
 - 🔴 BLOCKED — clear signs of being stuck (extended debugging, repeated fix commits, no progress, standup says blocked)
 - 🟡 AT RISK — low activity, unusual patterns, potential issue brewing
 - 🟢 ON TRACK — normal productive activity
 
-Format your output like this for EACH developer:
+Format for EACH developer:
 
-### [status emoji] [Developer Name] — [STATUS LABEL]
-**What they're working on:** [brief description]
-**Signal:** [specific evidence from the data — commit messages, session patterns, etc.]
-**Suggested action for teammates:** [concrete, specific suggestion — what to offer, where Kevin's skills apply]
+### [emoji] [Developer Name] — [STATUS]
+**What they're working on:** [brief]
+**Signal:** [specific evidence — commit messages, session patterns]
+**Suggested action for teammates:** [concrete suggestion]
 
 ---
 
 After all individual sections, add:
 
 ## Quick Wins for the Team
-[2-3 bullet points: the most impactful collaboration moves right now]
+[2-3 bullet points: most impactful collaboration moves right now]
 
-Keep it brief and direct. Focus on actionable intelligence, not vague observations. Reference actual project names and commit messages.`;
+Be brief and direct. Reference actual project names and commit messages.`;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");

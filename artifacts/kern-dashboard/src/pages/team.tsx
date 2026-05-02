@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { useListTeamMembers, useGetTeamSnapshot, getListTeamMembersQueryKey, getGetTeamSnapshotQueryKey } from "@workspace/api-client-react";
+import { useAuth } from "@/context/auth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
@@ -123,7 +124,7 @@ function MemberDetailPanel({ devId, name }: { devId: number; name: string }) {
     loaded.current = true;
     setLoading(true);
     try {
-      const res = await fetch(`/api/team/members/${devId}/detail`);
+      const res = await fetch(`/api/team/members/${devId}/detail`, { credentials: "include" });
       if (res.ok) setData(await res.json());
     } catch { /* ignore */ } finally {
       setLoading(false);
@@ -334,6 +335,7 @@ function BlockerIntelPanel() {
         method: "POST",
         signal: controller.signal,
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
       });
 
       if (!res.ok || !res.body) { setStatus("error"); return; }
@@ -452,9 +454,9 @@ export default function Team() {
     query: { queryKey: getListTeamMembersQueryKey() },
   });
 
-  // Kevin is always dev id=1 (first developer, ordered by id asc)
+  const { developer: me } = useAuth();
   const members: Member[] = (membersData?.members ?? []) as Member[];
-  const myId = members.length > 0 ? Math.min(...members.map(m => m.id)) : -1;
+  const myId = me?.id ?? -1;
 
   return (
     <div className="space-y-8" data-testid="page-team">
